@@ -16,7 +16,9 @@ import { useCart } from "@/hooks/use-cart";
 import { productApi, shippingApi } from "@/services/api";
 import type { Product } from "@/types/product";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWishlist } from "@/hooks/use-wishlist";
 import { useWishlistStore } from "@/stores/wishlist-store";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { products } from "@/lib/mock-data";
 import { formatPrice } from "@/lib/utils";
@@ -43,8 +45,11 @@ export default function ProductDetailPage() {
   const [addedToCart, setAddedToCart] = useState(false);
 
   const { addItem } = useCart();
-  const { toggleItem, isWishlisted } = useWishlistStore();
+  const { toggleItem } = useWishlist();
+  const wishlisted = useWishlistStore((s) => s.items.some((p) => p.id === product?.id));
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
+  const showShopActions = !isAdmin;
 
   useEffect(() => {
     setLoading(true);
@@ -80,7 +85,6 @@ export default function ProductDetailPage() {
 
   if (!product) return notFound();
 
-  const wishlisted = isWishlisted(product.id);
   const savings = product.originalPrice ? product.originalPrice - product.price : 0;
 
   const handleAddToCart = () => {
@@ -144,20 +148,22 @@ export default function ProductDetailPage() {
               key={selectedImage}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="relative  rounded-2xl overflow-hidden bg-[hsl(var(--muted))] border"
+              className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[hsl(var(--muted))] border"
             >
-              <img src={product.images[selectedImage]} alt={product.name} className="w-full h-full object-cover" />
+              <img src={product.images[selectedImage]} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
               {product.discount && (
                 <div className="absolute top-4 left-4">
                   <Badge variant="saffron" className="text-sm font-bold">-{product.discount}%</Badge>
                 </div>
               )}
-              <button
-                onClick={() => { toggleItem(product); toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist!", description: product.name }); }}
-                className={cn("absolute top-4 right-4 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-colors", wishlisted ? "bg-red-500 text-white" : "bg-white/90 text-gray-700 hover:bg-red-50")}
-              >
-                <Heart className={cn("w-5 h-5", wishlisted && "fill-current")} />
-              </button>
+              {showShopActions && (
+                <button
+                  onClick={() => { toggleItem(product); toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist!", description: product.name }); }}
+                  className={cn("absolute top-4 right-4 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-colors", wishlisted ? "bg-red-500 text-white" : "bg-white/90 text-gray-700 hover:bg-red-50")}
+                >
+                  <Heart className={cn("w-5 h-5", wishlisted && "fill-current")} />
+                </button>
+              )}
             </motion.div>
 
             {/* Thumbnails */}
@@ -246,37 +252,38 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button
-                size="lg"
-                className="flex-1 gap-2 relative overflow-hidden"
-                onClick={handleAddToCart}
-              >
-                <AnimatePresence mode="wait">
-                  {addedToCart ? (
-                    <motion.span key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="flex items-center gap-2">
-                      <Check className="w-5 h-5" /> Added!
-                    </motion.span>
-                  ) : (
-                    <motion.span key="cart" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="flex items-center gap-2">
-                      <ShoppingCart className="w-5 h-5" /> Add to Cart
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </Button>
-              <Button size="lg" variant="saffron" className="flex-1 gap-2">
-                Buy Now
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => { toggleItem(product); toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist!" }); }}
-                className={cn("w-12 px-0", wishlisted && "text-red-500 border-red-200")}
-              >
-                <Heart className={cn("w-5 h-5", wishlisted && "fill-current")} />
-              </Button>
-            </div>
+            {showShopActions && (
+              <div className="flex gap-3">
+                <Button
+                  size="lg"
+                  className="flex-1 gap-2 relative overflow-hidden"
+                  onClick={handleAddToCart}
+                >
+                  <AnimatePresence mode="wait">
+                    {addedToCart ? (
+                      <motion.span key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="flex items-center gap-2">
+                        <Check className="w-5 h-5" /> Added!
+                      </motion.span>
+                    ) : (
+                      <motion.span key="cart" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="flex items-center gap-2">
+                        <ShoppingCart className="w-5 h-5" /> Add to Cart
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </Button>
+                <Button size="lg" variant="saffron" className="flex-1 gap-2">
+                  Buy Now
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => { toggleItem(product); toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist!" }); }}
+                  className={cn("w-12 px-0", wishlisted && "text-red-500 border-red-200")}
+                >
+                  <Heart className={cn("w-5 h-5", wishlisted && "fill-current")} />
+                </Button>
+              </div>
+            )}
 
             {/* Delivery checker */}
             <div className="p-4 border rounded-xl space-y-3">

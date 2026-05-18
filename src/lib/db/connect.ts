@@ -9,6 +9,8 @@ interface MongooseCache {
 declare global {
   // eslint-disable-next-line no-var
   var mongooseCache: MongooseCache | undefined;
+  // eslint-disable-next-line no-var
+  var mongooseListenersAttached: boolean | undefined;
 }
 
 const cached: MongooseCache = global.mongooseCache ?? {
@@ -18,32 +20,67 @@ const cached: MongooseCache = global.mongooseCache ?? {
 
 global.mongooseCache = cached;
 
+function attachConnectionListeners() {
+  if (global.mongooseListenersAttached) return;
+  global.mongooseListenersAttached = true;
+
+  mongoose.connection.on("disconnected", () => {
+    cached.conn = null;
+    cached.promise = null;
+    logger.warn("MongoDB disconnected — will reconnect on next request");
+  });
+
+  mongoose.connection.on("error", (err) => {
+    cached.conn = null;
+    cached.promise = null;
+    logger.error("MongoDB connection error", err instanceof Error ? err.message : err);
+  });
+}
+
+function isConnected(): boolean {
+  return mongoose.connection.readyState === 1;
+}
+
 export async function connectDB(): Promise<typeof mongoose> {
-  console.log("Connecting to MongoDB");
-  if (cached.conn) return cached.conn;
+  attachConnectionListeners();
+
+  if (isConnected()) {
+    return mongoose;
+  }
+
+  if (cached.conn && isConnected()) {
+    return cached.conn;
+  }
 
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    throw new Error("MONGODB_URI is not defined");
+    throw new Error("MONGODB_URI is not defined. Add it to .env.local");
   }
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(uri, {
-      bufferCommands: false,
-      maxPoolSize: 10,
-    });
+    logger.info("Connecting to MongoDB…");
+    cached.promise = mongoose
+      .connect(uri, {
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+      })
+      .then((conn) => {
+        logger.info("MongoDB connected");
+        return conn;
+      });
   }
 
   try {
     cached.conn = await cached.promise;
-    logger.info("MongoDB connected");
-    console.log("MongoDB connected");
+    return cached.conn;
   } catch (error) {
     cached.promise = null;
-    logger.error("MongoDB connection failed", error);
-    throw error;
-    console.log("MongoDB connection failed", error);
+    cached.conn = null;
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("MongoDB connection failed", message);
+    throw new Error(
+      `Could not connect to MongoDB. Check MONGODB_URI, Atlas IP whitelist (0.0.0.0/0 for dev), and network. Details: ${message}`
+    );
   }
-
-  return cached.conn;
 }

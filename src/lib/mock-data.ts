@@ -1,15 +1,16 @@
 export type { Product } from "@/types/product";
 import type { Product } from "@/types/product";
+import { categoryImage, productImage, heroImage } from "@/lib/product-images";
 
 export const categories = [
-  { id: "1", name: "Organic Dals", slug: "organic-dals", icon: "🌾", count: 8, description: "Hand-picked mountain lentils", image: "https://images.unsplash.com/photo-1601000938259-4a3e47d9aa5f?w=400" },
-  { id: "2", name: "Dry Fruits & Nuts", slug: "dry-fruits", icon: "🥜", count: 12, description: "Himalayan dry fruits & nuts", image: "https://images.unsplash.com/photo-1596591868231-05e808fd131d?w=400" },
-  { id: "3", name: "Fresh Apples", slug: "apples", icon: "🍎", count: 5, description: "Crisp Himachali apples", image: "https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?w=400" },
-  { id: "4", name: "Pure Honey", slug: "honey", icon: "🍯", count: 4, description: "Raw mountain honey", image: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=400" },
-  { id: "5", name: "Himachali Shawls", slug: "shawls", icon: "🧣", count: 10, description: "Traditional woolen shawls", image: "https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?w=400" },
-  { id: "6", name: "Himachali Topi", slug: "topi", icon: "🧢", count: 6, description: "Traditional Himachali caps", image: "https://images.unsplash.com/photo-1521369909029-2afed882baee?w=400" },
-  { id: "7", name: "Pattu", slug: "pattu", icon: "🧵", count: 7, description: "Handwoven woolen fabric", image: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=400" },
-  { id: "8", name: "Pahadi Spices", slug: "spices", icon: "🌶️", count: 9, description: "Aromatic mountain spices", image: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=400" },
+  { id: "1", name: "Organic Dals", slug: "organic-dals", icon: "🌾", count: 8, description: "Hand-picked mountain lentils", image: categoryImage("organic-dals") },
+  { id: "2", name: "Dry Fruits & Nuts", slug: "dry-fruits", icon: "🥜", count: 12, description: "Himalayan dry fruits & nuts", image: categoryImage("dry-fruits") },
+  { id: "3", name: "Fresh Apples", slug: "apples", icon: "🍎", count: 5, description: "Crisp Himachali apples", image: categoryImage("apples") },
+  { id: "4", name: "Pure Honey", slug: "honey", icon: "🍯", count: 4, description: "Raw mountain honey", image: categoryImage("honey") },
+  { id: "5", name: "Himachali Shawls", slug: "shawls", icon: "🧣", count: 10, description: "Traditional woolen shawls", image: categoryImage("shawls") },
+  { id: "6", name: "Himachali Topi", slug: "topi", icon: "🧢", count: 6, description: "Traditional Himachali caps", image: categoryImage("topi") },
+  { id: "7", name: "Pattu", slug: "pattu", icon: "🧵", count: 7, description: "Handwoven woolen fabric", image: categoryImage("pattu") },
+  { id: "8", name: "Pahadi Spices", slug: "spices", icon: "🌶️", count: 9, description: "Aromatic mountain spices", image: categoryImage("spices") },
 ];
 
 export const products: Product[] = [
@@ -25,11 +26,7 @@ export const products: Product[] = [
     rating: 4.8,
     reviews: 128,
     stock: 50,
-    images: [
-      "https://images.unsplash.com/photo-1601000938259-4a3e47d9aa5f?w=600",
-      "https://images.unsplash.com/photo-1543362906-acfc16c67564?w=600",
-      "https://images.unsplash.com/photo-1585996600000-cb7e2a0b60cb?w=600",
-    ],
+    images: [productImage("rajma-1"), productImage("rajma-2"), productImage("rajma-3")],
     description: "Hand-picked organic Rajma (kidney beans) from the pristine valleys of Bharmour, Himachal Pradesh. Grown at an altitude of 2,000+ meters without any pesticides or chemicals. These Rajma have a unique earthy flavor and creamy texture that makes them ideal for the classic Rajma Chawal dish.",
     shortDescription: "Premium mountain-grown kidney beans from Bharmour's organic farms.",
     features: ["100% Organic", "No Pesticides", "High Protein", "Rich in Iron", "Mountain grown at 2000m+"],
@@ -51,10 +48,7 @@ export const products: Product[] = [
     rating: 4.7,
     reviews: 95,
     stock: 35,
-    images: [
-      "https://images.unsplash.com/photo-1543362906-acfc16c67564?w=600",
-      "https://images.unsplash.com/photo-1601000938259-4a3e47d9aa5f?w=600",
-    ],
+    images: [productImage("maah-dal-1"), productImage("maah-dal-2")],
     description: "Traditional Black Maah Dal from the high-altitude farms of Himachal Pradesh. Known for its rich, buttery taste and exceptional nutritional value. Perfect for making Dal Makhani.",
     shortDescription: "Traditional Himachali Black Urad Dal, organically grown.",
     features: ["Heirloom variety", "Organic certified", "High protein", "Traditional farming"],
@@ -75,10 +69,7 @@ export const products: Product[] = [
     rating: 4.9,
     reviews: 204,
     stock: 25,
-    images: [
-      "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=600",
-      "https://images.unsplash.com/photo-1471943038374-5b0b5f0ee3c1?w=600",
-    ],
+    images: [productImage("honey-1"), productImage("honey-2")],
     description: "Raw, unprocessed wild honey collected from the high-altitude meadows of Bharmour. The bees feed on wildflowers including rhododendron and deodar blossoms, giving this honey its distinctive floral aroma and complex flavor profile.",
     shortDescription: "Raw, unfiltered honey from Himalayan wildflower meadows.",
     features: ["100% Raw", "Unprocessed", "Wildflower nectar", "No additives", "Medicinal properties"],
@@ -100,10 +91,7 @@ export const products: Product[] = [
     rating: 4.8,
     reviews: 67,
     stock: 15,
-    images: [
-      "https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?w=600",
-      "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=600",
-    ],
+    images: [productImage("shawl-1"), productImage("shawl-2")],
     description: "Authentic Kullu Shawl handwoven by local Himachali artisans using traditional loom techniques passed down through generations. Made from premium Merino wool with intricate geometric patterns inspired by Himachali folk art.",
     shortDescription: "Handwoven traditional shawl by Himachali artisans.",
     features: ["100% Merino wool", "Handwoven", "Traditional patterns", "Warm & soft", "Artisan crafted"],
@@ -124,10 +112,7 @@ export const products: Product[] = [
     rating: 4.6,
     reviews: 145,
     stock: 40,
-    images: [
-      "https://images.unsplash.com/photo-1596591868231-05e808fd131d?w=600",
-      "https://images.unsplash.com/photo-1604270050809-fd0ce99e5f3a?w=600",
-    ],
+    images: [productImage("walnuts-1"), productImage("walnuts-2")],
     description: "Premium paper-shell walnuts from the Himalayan orchards. Hand-cracked and carefully selected to ensure only the finest, plump kernels reach you. Rich in Omega-3 fatty acids and antioxidants.",
     shortDescription: "Premium paper-shell Himalayan walnuts, rich in Omega-3.",
     features: ["Paper-shell variety", "Hand-cracked", "Rich in Omega-3", "No preservatives"],
@@ -147,10 +132,7 @@ export const products: Product[] = [
     rating: 4.7,
     reviews: 89,
     stock: 20,
-    images: [
-      "https://images.unsplash.com/photo-1521369909029-2afed882baee?w=600",
-      "https://images.unsplash.com/photo-1534215754734-18e55d13e346?w=600",
-    ],
+    images: [productImage("topi-1"), productImage("topi-2")],
     description: "Authentic Himachali Topi handcrafted by traditional artisans from Bharmour. Made with premium wool and adorned with traditional embroidery. A symbol of Himachali identity and pride.",
     shortDescription: "Traditional Himachali cap with authentic embroidery.",
     features: ["Premium wool", "Handcrafted", "Traditional embroidery", "Authentic design", "Cultural heritage"],
@@ -170,10 +152,7 @@ export const products: Product[] = [
     rating: 4.9,
     reviews: 312,
     stock: 30,
-    images: [
-      "https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?w=600",
-      "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600",
-    ],
+    images: [productImage("apples-1"), productImage("apples-2")],
     description: "Fresh, crisp Royal Delicious apples from the high-altitude orchards of Himachal Pradesh. Packed with care in an eco-friendly box. These apples are naturally sweet with a perfect crunch.",
     shortDescription: "Fresh Royal Delicious apples from Himachali high-altitude orchards.",
     features: ["Farm-fresh", "High-altitude grown", "Naturally sweet", "Eco-friendly packaging"],
@@ -195,10 +174,7 @@ export const products: Product[] = [
     rating: 4.6,
     reviews: 43,
     stock: 12,
-    images: [
-      "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=600",
-      "https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?w=600",
-    ],
+    images: [productImage("pattu-1"), productImage("pattu-2")],
     description: "Traditional Himachali Pattu, a hand-woven woolen fabric that forms the base for traditional dresses. Made by skilled weavers in the Chamba district using age-old techniques.",
     shortDescription: "Handwoven traditional Himachali Pattu fabric by local weavers.",
     features: ["100% Wool", "Handwoven", "Traditional pattern", "Durable", "Heritage craft"],
@@ -218,10 +194,7 @@ export const products: Product[] = [
     rating: 4.7,
     reviews: 178,
     stock: 45,
-    images: [
-      "https://images.unsplash.com/photo-1604270050809-fd0ce99e5f3a?w=600",
-      "https://images.unsplash.com/photo-1596591868231-05e808fd131d?w=600",
-    ],
+    images: [productImage("dry-fruits-mix-1"), productImage("dry-fruits-mix-2")],
     description: "A premium gift box of assorted Himalayan dry fruits including walnuts, almonds, cashews, raisins, and apricots. Sourced directly from mountain orchards and farms.",
     shortDescription: "Premium assorted dry fruits gift box from Himalayan orchards.",
     features: ["Assorted variety", "Gift ready", "No artificial flavors", "Mountain sourced"],
@@ -242,10 +215,7 @@ export const products: Product[] = [
     rating: 4.5,
     reviews: 234,
     stock: 60,
-    images: [
-      "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600",
-      "https://images.unsplash.com/photo-1599909631453-41e98e2c3c94?w=600",
-    ],
+    images: [productImage("masala-1"), productImage("masala-2")],
     description: "Authentic Pahadi Masala blend with wild herbs and spices from the Himalayan forests. A secret recipe passed down through Himachali households for generations.",
     shortDescription: "Traditional Himachali spice blend with wild mountain herbs.",
     features: ["Wild herbs", "Traditional recipe", "No preservatives", "Authentic flavor"],
@@ -265,10 +235,7 @@ export const products: Product[] = [
     rating: 4.8,
     reviews: 156,
     stock: 30,
-    images: [
-      "https://images.unsplash.com/photo-1599909631453-41e98e2c3c94?w=600",
-      "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600",
-    ],
+    images: [productImage("chukh-1"), productImage("chukh-2")],
     description: "Chamba Chukh is a traditional Himachali condiment made from dried citrus rinds and fiery local chillies. A bold, tangy, and spicy paste that transforms any dish.",
     shortDescription: "Traditional Himachali chilli-citrus condiment from Chamba.",
     features: ["Traditional recipe", "Fiery & tangy", "No artificial color", "Authentic taste"],
@@ -289,10 +256,7 @@ export const products: Product[] = [
     rating: 4.7,
     reviews: 198,
     stock: 55,
-    images: [
-      "https://images.unsplash.com/photo-1508061253366-f7da158b6d46?w=600",
-      "https://images.unsplash.com/photo-1596591868231-05e808fd131d?w=600",
-    ],
+    images: [productImage("almonds-1"), productImage("almonds-2")],
     description: "Premium gurbandi almonds from the high-altitude Kinnaur orchards. Smaller and more nutritious than regular almonds, these are known for their intense flavor and superior health benefits.",
     shortDescription: "Premium Kinnauri gurbandi almonds from high-altitude orchards.",
     features: ["Gurbandi variety", "High-altitude grown", "Rich in Vitamin E", "Superior flavor"],
@@ -373,7 +337,7 @@ export const heroSlides = [
     description: "Experience the authentic taste of Bharmour's organic farms and the artistry of Himachali craftsmen, delivered to your doorstep.",
     cta: "Shop Now",
     ctaLink: "/products",
-    image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1600",
+    image: heroImage("mountains"),
     badge: "100% Organic & Authentic",
   },
   {
@@ -383,7 +347,7 @@ export const heroSlides = [
     description: "Carry the warmth of the mountains. Each shawl tells a story of Himachali culture woven by skilled artisans.",
     cta: "Explore Crafts",
     ctaLink: "/products?category=shawls",
-    image: "https://images.unsplash.com/photo-1601924638867-3a6de6b7a500?w=1600",
+    image: heroImage("shawls"),
     badge: "Handcrafted with Love",
   },
   {
@@ -393,7 +357,7 @@ export const heroSlides = [
     description: "Harvested from high-altitude meadows where wildflowers bloom. Pure, unprocessed, and full of nature's goodness.",
     cta: "Shop Honey",
     ctaLink: "/products?category=honey",
-    image: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=1600",
+    image: heroImage("honey"),
     badge: "Raw & Unprocessed",
   },
 ];

@@ -1,9 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import type { Product } from "@/lib/mock-data";
+import type { Product } from "@/types/product";
 
 interface WishlistStore {
   items: Product[];
+  setItems: (products: Product[]) => void;
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
   toggleItem: (product: Product) => void;
@@ -11,37 +11,34 @@ interface WishlistStore {
   clearWishlist: () => void;
 }
 
-export const useWishlistStore = create<WishlistStore>()(
-  persist(
-    (set, get) => ({
-      items: [],
+export const useWishlistStore = create<WishlistStore>()((set, get) => ({
+  items: [],
 
-      addItem: (product) => {
-        if (!get().isWishlisted(product.id)) {
-          set((state) => ({ items: [...state.items, product] }));
-        }
-      },
+  setItems: (products) => set({ items: products }),
 
-      removeItem: (productId) => {
-        set((state) => ({
-          items: state.items.filter((p) => p.id !== productId),
-        }));
-      },
+  addItem: (product) => {
+    if (!get().isWishlisted(product.id)) {
+      set((state) => ({ items: [...state.items, product] }));
+    }
+  },
 
-      toggleItem: (product) => {
-        if (get().isWishlisted(product.id)) {
-          get().removeItem(product.id);
-        } else {
-          get().addItem(product);
-        }
-      },
+  removeItem: (productId) => {
+    set((state) => ({
+      items: state.items.filter((p) => p.id !== productId),
+    }));
+  },
 
-      isWishlisted: (productId) => {
-        return get().items.some((p) => p.id === productId);
-      },
+  toggleItem: (product) => {
+    if (get().isWishlisted(product.id)) {
+      get().removeItem(product.id);
+    } else {
+      get().addItem(product);
+    }
+  },
 
-      clearWishlist: () => set({ items: [] }),
-    }),
-    { name: "bharmouriroots-wishlist" }
-  )
-);
+  isWishlisted: (productId) => {
+    return get().items.some((p) => p.id === productId);
+  },
+
+  clearWishlist: () => set({ items: [] }),
+}));

@@ -43,9 +43,10 @@ export function Navbar() {
 
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { user, isAuthenticated, logout, getDashboardPath, isAdmin } = useAuth();
   const cartCount = useCartStore((s) => s.getItemCount());
   const wishlistCount = useWishlistStore((s) => s.items.length);
-  const { user, isAuthenticated, logout, getDashboardPath, isAdmin } = useAuth();
+  const showShopActions = !isAdmin;
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -196,28 +197,30 @@ export function Navbar() {
                 </button>
               )}
 
-              {/* Wishlist — hidden on small phones, in mobile menu instead */}
-              <Link
-                href="/dashboard/wishlist"
-                className="hidden sm:flex relative p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors items-center justify-center"
-              >
-                <Heart className="w-5 h-5" />
-                {mounted && wishlistCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 gradient-saffron text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-                    {wishlistCount}
-                  </span>
-                )}
-              </Link>
+              {showShopActions && (
+                <Link
+                  href="/dashboard/wishlist"
+                  className="hidden sm:flex relative p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors items-center justify-center"
+                >
+                  <Heart className="w-5 h-5" />
+                  {mounted && wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 gradient-saffron text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                      {wishlistCount}
+                    </span>
+                  )}
+                </Link>
+              )}
 
-              {/* Cart */}
-              <Link href="/cart" className="relative p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
-                <ShoppingCart className="w-5 h-5" />
-                {mounted && cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 gradient-forest text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-                    {cartCount}
-                  </span>
-                )}
-              </Link>
+              {showShopActions && (
+                <Link href="/cart" className="relative p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
+                  <ShoppingCart className="w-5 h-5" />
+                  {mounted && cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 gradient-forest text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                      {cartCount}
+                    </span>
+                  )}
+                </Link>
+              )}
 
               {/* User menu — hidden on small phones, in mobile menu instead */}
               <div className="hidden sm:block relative">
@@ -251,9 +254,11 @@ export function Navbar() {
                           <Link href={getDashboardPath()} className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[hsl(var(--muted))] text-sm transition-colors">
                             <LayoutDashboard className="w-4 h-4" /> {isAdmin ? "Admin Dashboard" : "My Dashboard"}
                           </Link>
-                          <Link href="/dashboard/orders" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[hsl(var(--muted))] text-sm transition-colors">
-                            <Package className="w-4 h-4" /> My Orders
-                          </Link>
+                          {!isAdmin && (
+                            <Link href="/dashboard/orders" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[hsl(var(--muted))] text-sm transition-colors">
+                              <Package className="w-4 h-4" /> My Orders
+                            </Link>
+                          )}
                           {user.role === "admin" && (
                             <Link href="/admin" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[hsl(var(--muted))] text-sm transition-colors text-[hsl(var(--primary))]">
                               <Settings className="w-4 h-4" /> Admin Panel
@@ -377,28 +382,31 @@ export function Navbar() {
 
                 {/* Account section */}
                 <div className="pt-3 border-t space-y-1">
-                  {/* Wishlist */}
-                  <Link
-                    href="/dashboard/wishlist"
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium transition-colors"
-                  >
-                    <Heart className="w-4 h-4 shrink-0" />
-                    <span>Wishlist</span>
-                    {wishlistCount > 0 && (
-                      <span className="ml-auto w-5 h-5 gradient-saffron text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-                        {wishlistCount}
-                      </span>
-                    )}
-                  </Link>
+                  {showShopActions && (
+                    <Link
+                      href="/dashboard/wishlist"
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium transition-colors"
+                    >
+                      <Heart className="w-4 h-4 shrink-0" />
+                      <span>Wishlist</span>
+                      {wishlistCount > 0 && (
+                        <span className="ml-auto w-5 h-5 gradient-saffron text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                          {wishlistCount}
+                        </span>
+                      )}
+                    </Link>
+                  )}
 
                   {mounted && isAuthenticated && user ? (
                     <>
                       <Link href={getDashboardPath()} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium transition-colors">
                         <LayoutDashboard className="w-4 h-4 shrink-0" /> {isAdmin ? "Admin Dashboard" : "My Dashboard"}
                       </Link>
-                      <Link href="/dashboard/orders" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium transition-colors">
-                        <Package className="w-4 h-4 shrink-0" /> My Orders
-                      </Link>
+                      {!isAdmin && (
+                        <Link href="/dashboard/orders" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium transition-colors">
+                          <Package className="w-4 h-4 shrink-0" /> My Orders
+                        </Link>
+                      )}
                       {user.role === "admin" && (
                         <Link href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[hsl(var(--muted))] text-sm font-medium text-[hsl(var(--primary))] transition-colors">
                           <Settings className="w-4 h-4 shrink-0" /> Admin Panel

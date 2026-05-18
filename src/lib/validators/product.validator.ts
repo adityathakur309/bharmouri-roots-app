@@ -15,7 +15,10 @@ export const productSchema = z.object({
     .array(
       z.union([
         z.string().url(),
-        z.string().regex(/^\/(uploads|images)\//),
+        z
+          .string()
+          .regex(/^\/(uploads|images)\//)
+          .or(z.string().regex(/^\/api\/media\/[a-f0-9]{24}$/i)),
       ])
     )
     .min(1),

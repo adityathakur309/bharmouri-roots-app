@@ -157,8 +157,8 @@ export default function HomePage() {
             {categories.map((cat) => (
               <motion.div key={cat.id} variants={fadeUp}>
                 <Link href={`/products?category=${cat.slug}`}>
-                  <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative rounded-2xl overflow-hidden  cursor-pointer shadow-md hover:shadow-xl transition-shadow">
-                    <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">
+                    <img src={cat.image} alt={cat.name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
                     <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
                     <div className="absolute bottom-0 left-0 right-0 p-4">
                       <span className="text-2xl mb-1 block">{cat.icon}</span>
@@ -180,10 +180,10 @@ export default function HomePage() {
       <section className="py-12 sm:py-20 bg-[hsl(var(--muted))]/30">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Featured Products" title="Our Best Sellers" subtitle="Handpicked products that our customers love the most — authentic, fresh, and premium quality" />
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {featuredProducts.map((product) => (
-              <motion.div key={product.id} variants={fadeUp}>
-                <ProductCard product={product} />
+              <motion.div key={product.id} variants={fadeUp} className="h-full">
+                <ProductCard product={product} className="h-full" />
               </motion.div>
             ))}
           </motion.div>
@@ -200,7 +200,7 @@ export default function HomePage() {
       {/* Story Banner */}
       <section className="py-14 sm:py-24 relative overflow-hidden">
         <div className="absolute inset-0">
-          <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=1600" alt="Himachal Pradesh mountains" className="w-full h-full object-cover" />
+          <img src="https://picsum.photos/seed/bh-story-banner/1600/900" alt="Himachal Pradesh mountains" className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-linear-to-r from-[hsl(142,38%,15%)]/95 via-[hsl(142,38%,15%)]/80 to-transparent" />
         </div>
         <div className="relative container mx-auto px-4 max-w-7xl">
@@ -238,10 +238,10 @@ export default function HomePage() {
       <section className="py-20">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Top Picks" title="Community Favorites" subtitle="Products loved and trusted by thousands of satisfied customers" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {bestsellerProducts.map((product, i) => (
-              <motion.div key={product.id} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                <ProductCard product={product} />
+              <motion.div key={product.id} className="h-full" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
+                <ProductCard product={product} className="h-full" />
               </motion.div>
             ))}
           </div>

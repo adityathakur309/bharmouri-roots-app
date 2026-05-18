@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { cartApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore, type CartItem } from "@/stores/cart-store";
-import { isValidMongoId } from "@/lib/utils/mongo-id";
 import type { Product } from "@/types/product";
 
 function mapApiCartItem(item: { product: Product; quantity: number }): CartItem {
@@ -14,14 +13,18 @@ function mapApiCartItem(item: { product: Product; quantity: number }): CartItem 
 export function useCartSync() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const hydrated = useAuthStore((s) => s.hydrated);
+  const user = useAuthStore((s) => s.user);
   const synced = useRef(false);
   const setFromServer = useCartStore((s) => s.setFromServer);
 
   useEffect(() => {
     if (!hydrated) return;
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || user?.role === "admin") {
       synced.current = false;
+      if (user?.role === "admin") {
+        useCartStore.getState().clearCart();
+      }
       return;
     }
 
@@ -30,17 +33,6 @@ export function useCartSync() {
     let cancelled = false;
 
     (async () => {
-      const localItems = useCartStore.getState().items;
-
-      for (const item of localItems) {
-        if (!isValidMongoId(item.product.id)) continue;
-        try {
-          await cartApi.addItem(item.product.id, item.quantity);
-        } catch {
-          /* item may be invalid or out of stock */
-        }
-      }
-
       try {
         const res = await cartApi.get();
         const data = res.data as {
@@ -56,7 +48,7 @@ export function useCartSync() {
           });
         }
       } catch {
-        /* keep merged local cart */
+        /* empty cart until user adds items */
       } finally {
         synced.current = true;
       }
@@ -65,5 +57,5 @@ export function useCartSync() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, isAuthenticated, setFromServer]);
+  }, [hydrated, isAuthenticated, user?.role, setFromServer]);
 }

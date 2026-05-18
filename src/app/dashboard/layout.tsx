@@ -87,10 +87,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button
             onClick={() => setMobileSidebarOpen(true)}
             className="p-2 rounded-lg border bg-[hsl(var(--card))]"
+            aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="font-bold text-lg">My Account</h1>
+          <h1 className="font-bold text-lg flex-1">My Account</h1>
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border bg-[hsl(var(--card))] text-red-500 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+            aria-label="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden xs:inline">Logout</span>
+          </button>
         </div>
 
         <div className="flex gap-6">

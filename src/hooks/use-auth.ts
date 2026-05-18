@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/services/api";
 import { getStoredToken, setStoredToken } from "@/services/api/client";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
+import { useCartStore } from "@/stores/cart-store";
+import { useWishlistStore } from "@/stores/wishlist-store";
 import { resolvePostLoginPath } from "@/lib/auth-routes";
 
 export type { AuthUser };
@@ -72,6 +74,8 @@ export function useAuth() {
   const logout = useCallback(() => {
     authApi.logout();
     clearSession();
+    useCartStore.getState().clearCart();
+    useWishlistStore.getState().clearWishlist();
     router.push("/");
   }, [clearSession, router]);
 

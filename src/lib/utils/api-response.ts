@@ -57,7 +57,13 @@ export function errorResponse(error: unknown): NextResponse<ApiErrorBody> {
     return NextResponse.json(body, { status: error.statusCode });
   }
 
-  logger.error("Unhandled API error", error);
+  const detail =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error);
+  logger.error("Unhandled API error", detail);
   return NextResponse.json(
     {
       success: false,

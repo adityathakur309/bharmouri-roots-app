@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { categories } from "@/lib/mock-data";
+import { DEFAULT_PRODUCT_IMAGE } from "@/lib/product-images";
 import { productApi } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
@@ -103,15 +104,19 @@ export function ProductFormDialog({
     setUploading(true);
     try {
       const res = await productApi.uploadImage(file);
-      const url = res.data.data?.url ?? (res.data as { url?: string }).url;
-      if (!url) throw new Error("No URL");
+      const url = res.data?.data?.url;
+      if (!url) throw new Error("No URL returned from server");
       setForm((f) => ({
         ...f,
         images: f.images ? `${f.images}\n${url}` : url,
       }));
       toast({ title: "Image uploaded" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Upload failed — check MongoDB connection (npm run test:mongo)";
+      toast({ title: message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -134,7 +139,7 @@ export function ProductFormDialog({
         price: Number(form.price),
         originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined,
         stock: Number(form.stock),
-        images: imageList.length ? imageList : ["https://images.unsplash.com/photo-1601000938259-4a3e47d9aa5f?w=600"],
+        images: imageList.length ? imageList : [DEFAULT_PRODUCT_IMAGE],
         description: form.description,
         shortDescription: form.shortDescription,
         features: [] as string[],

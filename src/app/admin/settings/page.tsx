@@ -15,7 +15,7 @@ export default function AdminSettingsPage() {
       <div className="bg-[hsl(var(--card))] rounded-2xl border p-6 text-sm space-y-2">
         <p><strong>Payment:</strong> Razorpay (or mock demo mode)</p>
         <p><strong>Shipping:</strong> Shiprocket (or mock demo mode)</p>
-        <p><strong>Images:</strong> Local uploads in /public/uploads</p>
+        <p><strong>Images:</strong> Stored in MongoDB on production (Vercel); local dev may use /public/uploads</p>
       </div>
     </div>
   );

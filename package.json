@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "npx tsx src/scripts/seed.ts"
+    "seed": "npx tsx src/scripts/seed.ts",
+    "test:mongo": "npx tsx src/scripts/test-mongo.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

@@ -4,13 +4,13 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, ShoppingCart, Trash2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useWishlistStore } from "@/stores/wishlist-store";
+import { useWishlist } from "@/hooks/use-wishlist";
 import { useCart } from "@/hooks/use-cart";
 import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/utils";
 
 export default function WishlistPage() {
-  const { items, removeItem } = useWishlistStore();
+  const { items, removeItem } = useWishlist();
   const { addItem } = useCart();
   const { toast } = useToast();
 
@@ -57,8 +57,8 @@ export default function WishlistPage() {
                 className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden group"
               >
                 <Link href={`/products/${product.slug}`}>
-                  <div className=" overflow-hidden bg-[hsl(var(--muted))]">
-                    <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <div className="relative aspect-square overflow-hidden bg-[hsl(var(--muted))]">
+                    <img src={product.images[0]} alt={product.name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                   </div>
                 </Link>
                 <div className="p-4">

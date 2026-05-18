@@ -23,11 +23,10 @@ export const productApi = {
 
   uploadImage: (file: File) => {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", file, file.name);
     return apiClient.post<{ success: true; data: { url: string } }>(
       "/admin/upload",
-      formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
+      formData
     );
   },
 

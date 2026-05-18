@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Package, Heart, MapPin, ShoppingCart, Star, ArrowRight, Leaf } from "lucide-react";
+import { Package, Heart, MapPin, ShoppingCart, Star, ArrowRight, Leaf, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useCartStore } from "@/stores/cart-store";
@@ -50,7 +50,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const cartCount = useCartStore((s) => s.getItemCount());
   const wishlistCount = useWishlistStore((s) => s.items.length);
   const [orders, setOrders] = useState<DisplayOrder[]>(mockOrders);
@@ -84,10 +84,21 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <motion.div className="bg-[hsl(var(--card))] rounded-2xl border p-6 gradient-himalaya relative overflow-hidden">
         <div className="absolute inset-0 pattern-dots opacity-10" />
-        <div className="relative">
-          <p className="text-white/70 text-sm mb-1">Welcome back,</p>
-          <h1 className="text-2xl font-bold text-white">{user?.name ?? "Friend"} 👋</h1>
-          <p className="text-white/60 text-sm mt-1">Here&apos;s a summary of your account activity.</p>
+        <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <p className="text-white/70 text-sm mb-1">Welcome back,</p>
+            <h1 className="text-2xl font-bold text-white">{user?.name ?? "Friend"} 👋</h1>
+            <p className="text-white/60 text-sm mt-1">Here&apos;s a summary of your account activity.</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={logout}
+            className="shrink-0 gap-2 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
         </div>
       </motion.div>
 
