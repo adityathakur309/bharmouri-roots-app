@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { products } from "@/lib/mock-data";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { normalizeProductImageUrl } from "@/lib/utils/image-url";
 
 const mockReviews = [
   { id: 1, name: "Priya S.", avatar: "https://i.pravatar.cc/60?img=1", rating: 5, date: "Dec 12, 2024", comment: "Absolutely love this product! The quality is exceptional and it tastes just like what I remember from my travels to Himachal.", verified: true },
@@ -150,7 +151,7 @@ export default function ProductDetailPage() {
               animate={{ opacity: 1 }}
               className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[hsl(var(--muted))] border"
             >
-              <img src={product.images[selectedImage]} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
+              <img src={normalizeProductImageUrl(product.images[selectedImage] ?? "")} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
               {product.discount && (
                 <div className="absolute top-4 left-4">
                   <Badge variant="saffron" className="text-sm font-bold">-{product.discount}%</Badge>
@@ -175,7 +176,7 @@ export default function ProductDetailPage() {
                     onClick={() => setSelectedImage(i)}
                     className={cn("w-20 h-20 rounded-xl overflow-hidden border-2 transition-all", selectedImage === i ? "border-[hsl(var(--primary))] shadow-md" : "border-transparent opacity-60 hover:opacity-100")}
                   >
-                    <img src={img} alt={`${product.name} ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={normalizeProductImageUrl(img)} alt={`${product.name} ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

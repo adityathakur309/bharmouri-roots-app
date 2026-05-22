@@ -1,6 +1,7 @@
 import { Product } from "@/lib/db/models";
 import { NotFoundError, ValidationError } from "@/lib/utils/errors";
 import { cartRepository } from "./cart.repository";
+import { normalizeProductImages } from "@/lib/utils/image-url";
 import { Types } from "mongoose";
 
 const VALID_COUPONS: Record<string, number> = {
@@ -123,7 +124,7 @@ export class CartService {
             slug: p.slug,
             price: p.price,
             stock: p.stock,
-            images: p.images,
+            images: normalizeProductImages(p.images),
             category: p.category,
             categorySlug: p.categorySlug,
             shortDescription: p.shortDescription,

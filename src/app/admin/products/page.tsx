@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { normalizeProductImageUrl } from "@/lib/utils/image-url";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminProductsPage() {
@@ -142,7 +143,14 @@ export default function AdminProductsPage() {
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl overflow-hidden bg-[hsl(var(--muted))] shrink-0">
-                        <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+                        <img
+                          src={normalizeProductImageUrl(product.images[0] ?? "")}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium line-clamp-1">{product.name}</p>

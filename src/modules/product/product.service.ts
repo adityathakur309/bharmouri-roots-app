@@ -2,6 +2,7 @@ import { NotFoundError, ConflictError } from "@/lib/utils/errors";
 import { sanitizeObject } from "@/lib/utils/sanitize";
 import type { ProductInput, ProductQueryInput } from "@/lib/validators/product.validator";
 import { productRepository } from "./product.repository";
+import { normalizeProductImages } from "@/lib/utils/image-url";
 
 function mapProduct(doc: object) {
   const d = doc as Record<string, unknown>;
@@ -17,7 +18,7 @@ function mapProduct(doc: object) {
     rating: d.rating,
     reviews: d.reviews,
     stock: d.stock,
-    images: d.images,
+    images: normalizeProductImages(d.images),
     description: d.description,
     shortDescription: d.shortDescription,
     features: d.features,

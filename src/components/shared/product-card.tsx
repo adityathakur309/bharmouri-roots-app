@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { normalizeProductImageUrl } from "@/lib/utils/image-url";
 
 interface ProductCardProps {
   product: Product;
@@ -55,6 +56,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
   };
 
   const badge = product.badge ? badgeConfig[product.badge] : null;
+  const imageSrc = normalizeProductImageUrl(product.images[0] ?? "");
 
   return (
     <motion.div
@@ -68,7 +70,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           <div className="relative aspect-square w-full overflow-hidden bg-[hsl(var(--muted))] shrink-0">
             {!imgError ? (
               <img
-                src={product.images[0]}
+                src={imageSrc}
                 alt={product.name}
                 className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                 loading="lazy"
