@@ -7,22 +7,34 @@ import { Mail, Leaf, ArrowLeft, Send, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authApi } from "@/services/api";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setIsLoading(false);
-    setSent(true);
+    setError("");
+    try {
+      await authApi.forgotPassword(email.trim());
+      setSent(true);
+    } catch (err) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Something went wrong. Please try again.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[hsl(var(--background))]">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-[hsl(var(--background))]">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl gradient-forest flex items-center justify-center mx-auto mb-4">
@@ -31,7 +43,7 @@ export default function ForgotPasswordPage() {
           <h1 className="text-xl font-bold text-gradient">BharmouriRoots</h1>
         </div>
 
-        <div className="bg-[hsl(var(--card))] rounded-2xl border p-8 shadow-lg">
+        <div className="bg-[hsl(var(--card))] rounded-2xl border p-6 sm:p-8 shadow-lg">
           <AnimatePresence mode="wait">
             {!sent ? (
               <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -54,10 +66,16 @@ export default function ForgotPasswordPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
                       required
+                      autoComplete="email"
                       className="h-11"
                     />
                   </div>
-                  <Button type="submit" size="lg" className="w-full gap-2" disabled={isLoading}>
+                  {error && (
+                    <p className="text-sm text-red-600" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  <Button type="submit" size="lg" className="w-full gap-2 min-h-11" disabled={isLoading}>
                     {isLoading ? (
                       <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
                     ) : (
@@ -74,19 +92,21 @@ export default function ForgotPasswordPage() {
                 </div>
                 <h2 className="text-xl font-bold mb-2">Check your email!</h2>
                 <p className="text-[hsl(var(--muted-foreground))] text-sm mb-2">
-                  We&apos;ve sent a password reset link to
+                  If an account exists for that address, we&apos;ve sent a password reset link to
                 </p>
-                <p className="font-semibold text-[hsl(var(--primary))] mb-6">{email}</p>
+                <p className="font-semibold text-[hsl(var(--primary))] mb-6 break-all">{email}</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
                   Didn&apos;t receive it? Check your spam folder or{" "}
-                  <button onClick={() => setSent(false)} className="text-[hsl(var(--primary))] hover:underline">try again</button>
+                  <button type="button" onClick={() => setSent(false)} className="text-[hsl(var(--primary))] hover:underline min-h-11 inline-flex items-center">
+                    try again
+                  </button>
                 </p>
               </motion.div>
             )}
           </AnimatePresence>
 
           <div className="mt-6 pt-5 border-t text-center">
-            <Link href="/login" className="flex items-center justify-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors">
+            <Link href="/login" className="inline-flex items-center justify-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors min-h-11">
               <ArrowLeft className="w-4 h-4" /> Back to Sign In
             </Link>
           </div>

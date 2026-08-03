@@ -35,6 +35,10 @@ export interface IOrder extends Document {
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;
+  activePaymentId?: Types.ObjectId;
+  invoiceId?: Types.ObjectId;
+  invoiceNumber?: string;
+  stockDecremented?: boolean;
   subtotal: number;
   discount: number;
   shippingCharge: number;
@@ -106,9 +110,13 @@ const orderSchema = new Schema<IOrder>(
       enum: ["pending", "paid", "failed", "refunded"],
       default: "pending",
     },
-    razorpayOrderId: String,
-    razorpayPaymentId: String,
+    razorpayOrderId: { type: String, index: true, sparse: true },
+    razorpayPaymentId: { type: String, index: true, sparse: true },
     razorpaySignature: String,
+    activePaymentId: { type: Schema.Types.ObjectId, ref: "Payment" },
+    invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice" },
+    invoiceNumber: { type: String, index: true, sparse: true },
+    stockDecremented: { type: Boolean, default: false },
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
     shippingCharge: { type: Number, default: 0 },

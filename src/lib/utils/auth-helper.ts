@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { JWT_ALGORITHM, JWT_EXPIRES_IN } from "@/lib/constants/jwt";
 import type { SessionUser } from "@/types/auth";
 
 const SALT_ROUNDS = 12;
@@ -27,7 +28,10 @@ export function signAccessToken(user: SessionUser): string {
       name: user.name,
     },
     secret,
-    { expiresIn: "7d" }
+    {
+      expiresIn: JWT_EXPIRES_IN,
+      algorithm: JWT_ALGORITHM,
+    }
   );
 }
 
@@ -36,12 +40,16 @@ export function verifyAccessToken(token: string): SessionUser | null {
     const secret = process.env.JWT_SECRET;
     if (!secret) return null;
 
-    const payload = jwt.verify(token, secret) as {
+    const payload = jwt.verify(token, secret, {
+      algorithms: [JWT_ALGORITHM],
+    }) as {
       sub: string;
       email: string;
       role: "user" | "admin";
       name: string;
     };
+
+    if (!payload.sub || !payload.email || !payload.role) return null;
 
     return {
       id: payload.sub,

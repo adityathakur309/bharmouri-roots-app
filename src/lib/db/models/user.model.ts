@@ -11,6 +11,8 @@ export interface IUser extends Document {
   googleId?: string;
   emailVerified?: Date;
   isActive: boolean;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,12 +28,13 @@ const userSchema = new Schema<IUser>(
     googleId: { type: String, sparse: true },
     emailVerified: Date,
     isActive: { type: Boolean, default: true },
+    resetPasswordToken: { type: String, select: false },
+    resetPasswordExpires: { type: Date, select: false },
   },
   { timestamps: true }
 );
 
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
+userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 
 export const User: Model<IUser> =
   mongoose.models.User ?? mongoose.model<IUser>("User", userSchema);

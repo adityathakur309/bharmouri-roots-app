@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useInView, useScroll, useTransform, type Variants } from "framer-motion";
 import {
@@ -10,7 +10,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProductCard } from "@/components/shared/product-card";
-import { products, categories, testimonials, heroSlides } from "@/lib/mock-data";
+import { EmptyState } from "@/components/shared/empty-state";
+import { categories, testimonials, heroSlides } from "@/lib/mock-data";
+import { ParentBrandSection } from "@/components/home/parent-brand-section";
+import { HeroParentBrandStrip } from "@/components/home/hero-parent-brand-strip";
+import { productApi } from "@/services/api";
+import type { Product } from "@/types/product";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 40 },
@@ -52,9 +57,27 @@ export default function HomePage() {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
   const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
 
-  const featuredProducts = products.filter((p) => p.isFeatured).slice(0, 8);
-  const bestsellerProducts = products.filter((p) => p.isBestseller).slice(0, 4);
+  useEffect(() => {
+    productApi
+      .list({ limit: 12 })
+      .then((res) => setCatalog(res.data ?? []))
+      .catch(() => setCatalog([]))
+      .finally(() => setProductsLoaded(true));
+  }, []);
+
+  const featuredProducts = (
+    catalog.filter((p) => p.isFeatured).length
+      ? catalog.filter((p) => p.isFeatured)
+      : catalog
+  ).slice(0, 8);
+  const bestsellerProducts = (
+    catalog.filter((p) => p.isBestseller).length
+      ? catalog.filter((p) => p.isBestseller)
+      : catalog
+  ).slice(0, 4);
 
   return (
     <div className="overflow-hidden">
@@ -78,8 +101,10 @@ export default function HomePage() {
 
         <div className="absolute inset-0 pattern-dots opacity-10" />
 
-        <motion.div style={{ opacity: heroOpacity }} className="relative z-10 container mx-auto px-4 max-w-7xl">
+        <motion.div style={{ opacity: heroOpacity }} className="relative z-10 container mx-auto px-4 max-w-7xl pt-6 sm:pt-8">
           <div className="max-w-3xl">
+            <HeroParentBrandStrip />
+
             <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-6">
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <span className="text-white/90 text-sm font-medium">{heroSlides[0].badge}</span>
@@ -180,13 +205,22 @@ export default function HomePage() {
       <section className="py-12 sm:py-20 bg-[hsl(var(--muted))]/30">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Featured Products" title="Our Best Sellers" subtitle="Handpicked products that our customers love the most — authentic, fresh, and premium quality" />
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {featuredProducts.map((product) => (
-              <motion.div key={product.id} variants={fadeUp} className="h-full">
-                <ProductCard product={product} className="h-full" />
-              </motion.div>
-            ))}
-          </motion.div>
+          {productsLoaded && featuredProducts.length === 0 ? (
+            <EmptyState
+              compact
+              title="Featured products coming soon"
+              description="We are still adding products to this collection."
+              primaryAction={{ label: "Browse Products", href: "/products" }}
+            />
+          ) : (
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              {featuredProducts.map((product) => (
+                <motion.div key={product.id} variants={fadeUp} className="h-full">
+                  <ProductCard product={product} className="h-full" />
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
           <div className="text-center mt-10">
             <Link href="/products">
               <Button size="lg" variant="outline" className="gap-2">
@@ -238,15 +272,27 @@ export default function HomePage() {
       <section className="py-20">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Top Picks" title="Community Favorites" subtitle="Products loved and trusted by thousands of satisfied customers" />
-          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {bestsellerProducts.map((product, i) => (
-              <motion.div key={product.id} className="h-full" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                <ProductCard product={product} className="h-full" />
-              </motion.div>
-            ))}
-          </div>
+          {productsLoaded && bestsellerProducts.length === 0 ? (
+            <EmptyState
+              compact
+              title="Bestsellers coming soon"
+              description="This section will fill up once products are available."
+              primaryAction={{ label: "Browse Products", href: "/products" }}
+            />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              {bestsellerProducts.map((product, i) => (
+                <motion.div key={product.id} className="h-full" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
+                  <ProductCard product={product} className="h-full" />
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
+
+      {/* Parent brand */}
+      <ParentBrandSection />
 
       {/* Testimonials */}
       <section className="py-12 sm:py-20 bg-[hsl(var(--muted))]/30">

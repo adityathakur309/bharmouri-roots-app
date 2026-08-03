@@ -1,4 +1,5 @@
 import { successResponse } from "@/lib/utils/api-response";
+import { parseQuery } from "@/lib/utils/query";
 import {
   productSchema,
   productQuerySchema,
@@ -11,14 +12,14 @@ import { productService } from "./product.service";
 export class ProductController {
   async list(request: NextRequest) {
     const { searchParams } = new URL(request.url);
-    const query = productQuerySchema.parse(Object.fromEntries(searchParams));
+    const query = parseQuery(productQuerySchema, searchParams);
     const result = await productService.list(query);
     return successResponse(result.products, { meta: result.meta });
   }
 
   async listAdmin(request: NextRequest) {
     const { searchParams } = new URL(request.url);
-    const query = productQuerySchema.parse(Object.fromEntries(searchParams));
+    const query = parseQuery(productQuerySchema, searchParams);
     const result = await productService.listAdmin(query);
     return successResponse(result.products, { meta: result.meta });
   }

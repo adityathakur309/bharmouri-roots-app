@@ -19,6 +19,13 @@ function getRazorpay(): Razorpay {
   return razorpayInstance;
 }
 
+function timingSafeEqualString(expected: string, received: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(received);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 export class RazorpayClient {
   isMockMode(): boolean {
     return isMockPaymentMode();
@@ -55,7 +62,7 @@ export class RazorpayClient {
 
     const body = `${razorpayOrderId}|${razorpayPaymentId}`;
     const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
-    return expected === razorpaySignature;
+    return timingSafeEqualString(expected, razorpaySignature);
   }
 
   getKeyId(): string {

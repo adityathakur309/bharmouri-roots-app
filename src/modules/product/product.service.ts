@@ -1,4 +1,5 @@
 import { NotFoundError, ConflictError } from "@/lib/utils/errors";
+import { buildPaginationMeta } from "@/lib/utils/query";
 import { sanitizeObject } from "@/lib/utils/sanitize";
 import type { ProductInput, ProductQueryInput } from "@/lib/validators/product.validator";
 import { productRepository } from "./product.repository";
@@ -39,12 +40,7 @@ export class ProductService {
     const [products, total] = await productRepository.findMany(query);
     return {
       products: products.map((p) => mapProduct(p)),
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
+      meta: buildPaginationMeta(query.page, query.limit, total),
     };
   }
 
@@ -52,12 +48,7 @@ export class ProductService {
     const [products, total] = await productRepository.findAllAdmin(query);
     return {
       products: products.map((p) => mapProduct(p)),
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
+      meta: buildPaginationMeta(query.page, query.limit, total),
     };
   }
 

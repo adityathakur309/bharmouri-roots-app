@@ -26,7 +26,7 @@ export const orderStatusConfig: Record<
   },
   processing: {
     label: "Processing",
-    color: "bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400",
+    color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400",
     icon: RotateCcw,
   },
   shipped: {
@@ -44,4 +44,20 @@ export const orderStatusConfig: Record<
     color: "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400",
     icon: XCircle,
   },
+};
+
+/** Human-readable impact copy shown before confirming a status change. */
+export const orderStatusImpact: Record<string, string> = {
+  paid: "Marks this order as paid. Use for COD collection or manual payment confirmation.",
+  confirmed:
+    "Approves the order for fulfillment. Customer sees Confirmed. You can create a courier shipment after this.",
+  processing:
+    "Marks the order as being packed / fulfilled. Usually set automatically after shipment booking.",
+  shipped:
+    "Marks the order as handed to the courier. Customer sees Shipped with tracking when available.",
+  delivered: "Completes the order. Customer sees Delivered. This cannot be undone.",
+  cancelled:
+    "Cancels the order. Stock may be restored where applicable. Only use if fulfillment stops.",
+  payment_pending: "Marks payment as still pending. Prepaid orders cannot ship until paid.",
+  pending: "Resets the order to an initial pending state.",
 };

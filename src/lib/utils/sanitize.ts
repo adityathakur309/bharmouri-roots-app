@@ -6,13 +6,22 @@ export function sanitizeString(input: string): string {
     .trim();
 }
 
+function sanitizeValue(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeString(value);
+  if (Array.isArray(value)) return value.map(sanitizeValue);
+  if (value instanceof Date || Buffer.isBuffer(value) || value === null) {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    return sanitizeObject(value as Record<string, unknown>);
+  }
+  return value;
+}
+
 export function sanitizeObject<T extends Record<string, unknown>>(obj: T): T {
   const result = { ...obj };
   for (const key of Object.keys(result)) {
-    const value = result[key];
-    if (typeof value === "string") {
-      (result as Record<string, unknown>)[key] = sanitizeString(value);
-    }
+    (result as Record<string, unknown>)[key] = sanitizeValue(result[key]);
   }
   return result;
 }

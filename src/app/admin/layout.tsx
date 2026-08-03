@@ -26,7 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
+  const renderSidebar = ({ mobile = false }: { mobile?: boolean } = {}) => (
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className={cn("flex items-center gap-3 p-5 border-b", collapsed && !mobile && "justify-center px-3")}>
@@ -92,12 +92,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-[hsl(var(--muted))]/20 flex">
       {/* Desktop sidebar */}
-      <aside className={cn("hidden lg:flex flex-col bg-[hsl(var(--card))] border-r transition-all duration-300 shrink-0", collapsed ? "w-16" : "w-64")}>
-        <Sidebar />
+      <aside className={cn("relative hidden lg:flex flex-col bg-[hsl(var(--card))] border-r transition-all duration-300 shrink-0", collapsed ? "w-16" : "w-64")}>
+        {renderSidebar()}
         <button
+          type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute left-0 top-16 -right-3 w-6 h-6 rounded-full bg-[hsl(var(--card))] border shadow-sm flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors z-10 hidden lg:flex"
-          style={{ left: collapsed ? "52px" : "252px" }}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute top-16 -right-3 w-6 h-6 rounded-full bg-[hsl(var(--card))] border shadow-sm flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors z-10"
         >
           <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", collapsed && "rotate-180")} />
         </button>
@@ -117,7 +118,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div className="flex justify-end p-3 border-b">
                 <button onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
               </div>
-              <Sidebar mobile />
+              {renderSidebar({ mobile: true })}
             </motion.aside>
           </motion.div>
         )}
@@ -127,12 +128,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
         <header className="sticky top-0 z-40 bg-[hsl(var(--card))]/95 backdrop-blur-xl border-b h-14 flex items-center px-4 gap-3">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
+          <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="lg:hidden p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors min-h-11 min-w-11 inline-flex items-center justify-center">
             <Menu className="w-5 h-5" />
           </button>
 
           {/* Search */}
-          <div className="relative flex-1 max-w-sm hidden sm:block">
+          <div className="relative flex-1 max-w-sm hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
             <input
               placeholder="Search products, orders..."

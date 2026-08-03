@@ -14,7 +14,18 @@ const envSchema = z.object({
   SHIPROCKET_PASSWORD: z.string().optional(),
   SHIPROCKET_PICKUP_PINCODE: z.string().default("176315"),
   SHIPROCKET_PICKUP_LOCATION: z.string().default("Primary"),
+  PAYMENT_MOCK_MODE: z.enum(["true", "false"]).optional(),
+  SHIPPING_MOCK_MODE: z.enum(["true", "false"]).optional(),
   ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_NAME: z.string().optional(),
+  ADMIN_PASSWORD: z.string().optional(),
+  EMAIL_PROVIDER: z.enum(["smtp", "resend", "brevo"]).optional(),
+  EMAIL_FROM: z.string().optional(),
+  EMAIL_API_KEY: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

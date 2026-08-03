@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from "axios";
+import axios, { type AxiosInstance, type AxiosError } from "axios";
 import { AppError } from "@/lib/utils/errors";
 import { logger } from "@/lib/utils/logger";
 import { isMockShippingMode, mockShippingClient } from "./mock-shipping.client";
@@ -10,7 +10,17 @@ interface ShiprocketToken {
 
 let cachedToken: ShiprocketToken | null = null;
 
+/** Shiprocket external API (test accounts use the same host). */
 const SHIPROCKET_BASE = "https://apiv2.shiprocket.in/v1/external";
+
+function shiprocketErrorMessage(error: unknown, fallback: string): string {
+  const ax = error as AxiosError<{ message?: string; error?: string; errors?: unknown }>;
+  const data = ax.response?.data;
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  if (typeof data?.error === "string" && data.error.trim()) return data.error;
+  if (ax.message) return `${fallback}: ${ax.message}`;
+  return fallback;
+}
 
 export class ShiprocketClient {
   private client: AxiosInstance;
@@ -39,21 +49,33 @@ export class ShiprocketClient {
       throw new AppError("Shiprocket is not configured", 503, "SHIPPING_NOT_CONFIGURED");
     }
 
-    const { data } = await axios.post(`${SHIPROCKET_BASE}/auth/login`, {
-      email,
-      password,
-    });
+    try {
+      const { data } = await axios.post(`${SHIPROCKET_BASE}/auth/login`, {
+        email,
+        password,
+      });
 
-    if (!data?.token) {
-      throw new AppError("Shiprocket authentication failed", 502);
+      if (!data?.token) {
+        throw new AppError("Shiprocket authentication failed", 502, "SHIPROCKET_AUTH");
+      }
+
+      cachedToken = {
+        token: data.token,
+        expiresAt: Date.now() + 9 * 24 * 60 * 60 * 1000,
+      };
+
+      return cachedToken.token;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error("Shiprocket auth failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new AppError(
+        shiprocketErrorMessage(error, "Shiprocket authentication failed"),
+        502,
+        "SHIPROCKET_AUTH"
+      );
     }
-
-    cachedToken = {
-      token: data.token,
-      expiresAt: Date.now() + 9 * 24 * 60 * 60 * 1000,
-    };
-
-    return cachedToken.token;
   }
 
   private async authHeaders() {
@@ -84,8 +106,14 @@ export class ShiprocketClient {
       });
       return data;
     } catch (error) {
-      logger.error("Shiprocket serviceability check failed", error);
-      throw new AppError("Failed to check serviceability", 502, "SHIPROCKET_ERROR");
+      logger.error("Shiprocket serviceability check failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new AppError(
+        shiprocketErrorMessage(error, "Failed to check serviceability"),
+        502,
+        "SHIPROCKET_ERROR"
+      );
     }
   }
 
@@ -96,36 +124,72 @@ export class ShiprocketClient {
 
     try {
       const headers = await this.authHeaders();
-      const { data } = await this.client.post("/orders/create/adhoc", payload, { headers });
+      const { data } = await this.client.post("/orders/create/adhoc", payload, {
+        headers,
+      });
       return data;
     } catch (error) {
-      logger.error("Shiprocket order creation failed", error);
-      throw new AppError("Failed to create shipment", 502, "SHIPROCKET_ERROR");
+      logger.error("Shiprocket order creation failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new AppError(
+        shiprocketErrorMessage(error, "Failed to create shipment"),
+        502,
+        "SHIPROCKET_ERROR"
+      );
     }
   }
 
-  async assignAwb(shipmentId: number, courierId: number) {
+  async assignAwb(shipmentId: number, courierId?: number) {
     if (this.isMockMode()) {
-      return { awb_code: `BR${shipmentId}` };
+      return mockShippingClient.assignAwb(shipmentId, courierId);
     }
-    const headers = await this.authHeaders();
-    const { data } = await this.client.post(
-      "/courier/assign/awb",
-      { shipment_id: shipmentId, courier_id: courierId },
-      { headers }
-    );
-    return data;
+
+    try {
+      const headers = await this.authHeaders();
+      const body: Record<string, unknown> = { shipment_id: shipmentId };
+      if (courierId) body.courier_id = courierId;
+
+      const { data } = await this.client.post("/courier/assign/awb", body, {
+        headers,
+      });
+      return data;
+    } catch (error) {
+      logger.error("Shiprocket AWB assign failed", {
+        message: error instanceof Error ? error.message : String(error),
+        shipmentId,
+      });
+      throw new AppError(
+        shiprocketErrorMessage(error, "Failed to assign AWB"),
+        502,
+        "SHIPROCKET_ERROR"
+      );
+    }
   }
 
   async trackShipment(shipmentId: string) {
     if (this.isMockMode()) {
       return mockShippingClient.trackShipment(shipmentId);
     }
-    const headers = await this.authHeaders();
-    const { data } = await this.client.get(`/courier/track/shipment/${shipmentId}`, {
-      headers,
-    });
-    return data;
+
+    try {
+      const headers = await this.authHeaders();
+      const { data } = await this.client.get(
+        `/courier/track/shipment/${shipmentId}`,
+        { headers }
+      );
+      return data;
+    } catch (error) {
+      logger.error("Shiprocket tracking failed", {
+        message: error instanceof Error ? error.message : String(error),
+        shipmentId,
+      });
+      throw new AppError(
+        shiprocketErrorMessage(error, "Failed to fetch tracking"),
+        502,
+        "SHIPROCKET_ERROR"
+      );
+    }
   }
 }
 

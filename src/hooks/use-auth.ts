@@ -72,11 +72,13 @@ export function useAuth() {
   );
 
   const logout = useCallback(() => {
-    authApi.logout();
-    clearSession();
-    useCartStore.getState().clearCart();
-    useWishlistStore.getState().clearWishlist();
-    router.push("/");
+    void (async () => {
+      await authApi.logout();
+      clearSession();
+      useCartStore.getState().clearCart();
+      useWishlistStore.getState().clearWishlist();
+      router.push("/");
+    })();
   }, [clearSession, router]);
 
   const updateProfile = useCallback(

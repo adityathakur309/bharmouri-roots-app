@@ -6,6 +6,7 @@ import { Leaf, Globe, Link2, MessageCircle, Play, Phone, Mail, MapPin, ArrowRigh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { getInstagramUrl } from "@/lib/config/site";
 
 const footerLinks = {
   shop: [
@@ -35,7 +36,7 @@ const footerLinks = {
 };
 
 const socialLinks = [
-  { icon: Globe, href: "#", label: "Instagram" },
+  { icon: Globe, href: getInstagramUrl(), label: "Instagram" },
   { icon: Link2, href: "#", label: "Facebook" },
   { icon: MessageCircle, href: "#", label: "Twitter" },
   { icon: Play, href: "#", label: "YouTube" },

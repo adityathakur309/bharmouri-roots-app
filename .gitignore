@@ -40,7 +40,8 @@ yarn-error.log*
 .env.production.local
 
 # user uploads & local secrets
-/public/uploads/
+/public/uploads/**
+!/public/uploads/.gitkeep
 *.key
 *.p12
 credentials.json

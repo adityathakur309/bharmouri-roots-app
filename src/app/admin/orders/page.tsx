@@ -1,18 +1,41 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { orderApi } from "@/services/api";
-import { orderStatusConfig } from "@/lib/order-status";
-import { withFallbackArray } from "@/lib/api-fallback";
-import { fallbackAdminOrders, type AdminOrderRow } from "@/lib/admin-fallback-data";
+import { orderStatusConfig, orderStatusImpact } from "@/lib/order-status";
+import { getAllowedOrderTransitions, canCreateShipment } from "@/lib/utils/order-transitions";
 import { useToast } from "@/hooks/use-toast";
-import { motion } from "framer-motion";
-import { Search, Truck, Package } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Truck, Package, ShoppingBag, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatPrice, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/shared/empty-state";
+import type { OrderStatus } from "@/types/order";
 
-const STATUS_OPTIONS = ["processing", "shipped", "delivered", "cancelled", "confirmed", "paid"];
+export type AdminOrderRow = {
+  id: string;
+  dbId: string;
+  customer: string;
+  email: string;
+  items: number;
+  total: number;
+  status: string;
+  date: string;
+  payment: string;
+};
+
+type PendingAction =
+  | { type: "status"; order: AdminOrderRow; nextStatus: OrderStatus }
+  | { type: "shipment"; order: AdminOrderRow };
 
 function mapApiOrders(
   data: Array<{
@@ -39,11 +62,101 @@ function mapApiOrders(
   }));
 }
 
+function errMessage(err: unknown, fallback: string) {
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: string }).message) || fallback;
+  }
+  return fallback;
+}
+
+function StatusBadgeMenu({
+  order,
+  onPick,
+}: {
+  order: AdminOrderRow;
+  onPick: (next: OrderStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const status = orderStatusConfig[order.status] ?? orderStatusConfig.processing;
+  const StatusIcon = status.icon;
+  const options = getAllowedOrderTransitions(order.status);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 text-[11px] sm:text-xs px-2.5 py-1.5 rounded-full font-medium whitespace-nowrap transition-all min-h-9",
+          status.color,
+          options.length ? "hover:ring-2 hover:ring-[hsl(var(--primary))]/25 cursor-pointer" : "cursor-default opacity-90"
+        )}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={options.length ? "Change status" : "No further status changes allowed"}
+      >
+        <StatusIcon className="w-3.5 h-3.5 shrink-0" />
+        <span>{status.label}</span>
+        {options.length > 0 && <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", open && "rotate-180")} />}
+      </button>
+
+      <AnimatePresence>
+        {open && options.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="absolute left-0 top-full mt-1 z-30 min-w-[180px] rounded-xl border bg-[hsl(var(--card))] shadow-xl p-1"
+            role="menu"
+          >
+            <p className="px-2.5 py-1.5 text-[10px] uppercase tracking-wide text-[hsl(var(--muted-foreground))] font-semibold">
+              Change to
+            </p>
+            {options.map((s) => {
+              const cfg = orderStatusConfig[s] ?? orderStatusConfig.processing;
+              const Icon = cfg.icon;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  role="menuitem"
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-sm hover:bg-[hsl(var(--muted))] transition-colors"
+                  onClick={() => {
+                    setOpen(false);
+                    onPick(s);
+                  }}
+                >
+                  <span className={cn("inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium", cfg.color)}>
+                    <Icon className="w-3 h-3" />
+                    {cfg.label}
+                  </span>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function AdminOrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [allOrders, setAllOrders] = useState<AdminOrderRow[]>([]);
-  const [usingDemo, setUsingDemo] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
   const loadOrders = useCallback(async () => {
@@ -52,17 +165,17 @@ export default function AdminOrdersPage() {
       const rows = mapApiOrders(
         (res.data ?? []) as Parameters<typeof mapApiOrders>[0]
       );
-      const list = withFallbackArray(rows.length ? rows : null, fallbackAdminOrders);
-      setAllOrders(list);
-      setUsingDemo(!rows.length);
+      setAllOrders(rows);
+      setLoadError(false);
     } catch {
-      setAllOrders(fallbackAdminOrders);
-      setUsingDemo(true);
+      setAllOrders([]);
+      setLoadError(true);
     }
   }, []);
 
   useEffect(() => {
-    loadOrders();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount/load
+    void loadOrders();
   }, [loadOrders]);
 
   useEffect(() => {
@@ -71,32 +184,38 @@ export default function AdminOrdersPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [loadOrders]);
 
-  const updateStatus = async (dbId: string, status: string) => {
-    if (usingDemo && dbId.startsWith("demo")) {
-      setAllOrders((prev) => prev.map((o) => (o.dbId === dbId ? { ...o, status } : o)));
-      toast({ title: "Demo order status updated" });
-      return;
-    }
+  const confirmAction = async () => {
+    if (!pending) return;
+    setBusy(true);
     try {
-      await orderApi.updateStatus(dbId, { status });
-      setAllOrders((prev) => prev.map((o) => (o.dbId === dbId ? { ...o, status } : o)));
-      toast({ title: "Order status updated" });
-    } catch {
-      toast({ title: "Failed to update status", variant: "destructive" });
-    }
-  };
-
-  const createShipment = async (dbId: string) => {
-    if (usingDemo && dbId.startsWith("demo")) {
-      toast({ title: "Demo shipment created" });
-      return;
-    }
-    try {
-      await orderApi.createShipment(dbId);
-      toast({ title: "Shipment created" });
-      loadOrders();
-    } catch {
-      toast({ title: "Could not create shipment", variant: "destructive" });
+      if (pending.type === "status") {
+        await orderApi.updateStatus(pending.order.dbId, { status: pending.nextStatus });
+        setAllOrders((prev) =>
+          prev.map((o) =>
+            o.dbId === pending.order.dbId ? { ...o, status: pending.nextStatus } : o
+          )
+        );
+        toast({
+          title: "Status updated",
+          description: `${pending.order.id} → ${orderStatusConfig[pending.nextStatus]?.label ?? pending.nextStatus}`,
+        });
+      } else {
+        await orderApi.createShipment(pending.order.dbId);
+        toast({
+          title: "Shipment created",
+          description: `${pending.order.id} is now booked with the courier (status: Processing).`,
+        });
+        await loadOrders();
+      }
+      setPending(null);
+    } catch (err) {
+      toast({
+        title: pending.type === "shipment" ? "Shipment failed" : "Status update failed",
+        description: errMessage(err, "Please try again"),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -108,138 +227,195 @@ export default function AdminOrdersPage() {
     return matchSearch && matchStatus;
   });
 
+  const dialogCopy = (() => {
+    if (!pending) return { title: "", description: "" };
+    if (pending.type === "shipment") {
+      return {
+        title: `Create shipment for ${pending.order.id}?`,
+        description:
+          "This books the order with the courier (Shiprocket or demo shipping). The order will move to Processing and tracking/AWB may be assigned. Prepaid orders must already be paid; COD orders can ship after confirmation.",
+      };
+    }
+    const from = orderStatusConfig[pending.order.status]?.label ?? pending.order.status;
+    const to = orderStatusConfig[pending.nextStatus]?.label ?? pending.nextStatus;
+    const impact =
+      orderStatusImpact[pending.nextStatus] ??
+      `Order status will change from ${from} to ${to}.`;
+    return {
+      title: `Change status to “${to}”?`,
+      description: `Order ${pending.order.id} is currently “${from}”.\n\n${impact}`,
+    };
+  })();
+
   return (
     <div className="space-y-5">
-      {usingDemo && (
-        <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-          Showing demo orders — real orders appear after customers checkout.
-        </p>
-      )}
-
       <div>
         <h1 className="text-2xl font-bold">Orders</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">{allOrders.length} total orders</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search orders..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl border bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {["all", "processing", "shipped", "delivered"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-sm font-medium transition-all capitalize",
-                statusFilter === s
-                  ? "gradient-forest text-white"
-                  : "bg-[hsl(var(--card))] border hover:bg-[hsl(var(--muted))]"
-              )}
-            >
-              {s === "all" ? "All" : s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-[hsl(var(--muted))]/30 border-b">
-              <tr>
-                {["Order ID", "Customer", "Date", "Items", "Total", "Payment", "Status", "Actions"].map((h) => (
-                  <th
-                    key={h}
-                    className="text-left p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[hsl(var(--border))]">
-              {filtered.map((order, i) => {
-                const status = orderStatusConfig[order.status] ?? orderStatusConfig.processing;
-                const StatusIcon = status.icon;
-                return (
-                  <motion.tr
-                    key={order.dbId}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="hover:bg-[hsl(var(--muted))]/20 transition-colors"
-                  >
-                    <td className="p-4 font-mono text-xs font-semibold">{order.id}</td>
-                    <td className="p-4">
-                      <div>
-                        <p className="font-medium">{order.customer}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{order.email}</p>
-                      </div>
-                    </td>
-                    <td className="p-4 text-[hsl(var(--muted-foreground))] whitespace-nowrap">
-                      {formatDate(order.date)}
-                    </td>
-                    <td className="p-4">{order.items}</td>
-                    <td className="p-4 font-bold text-[hsl(var(--primary))]">{formatPrice(order.total)}</td>
-                    <td className="p-4">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--muted))]">{order.payment}</span>
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-medium w-fit whitespace-nowrap ${status.color}`}
-                      >
-                        <StatusIcon className="w-3 h-3" /> {status.label}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1">
-                        <select
-                          value={order.status}
-                          onChange={(e) => updateStatus(order.dbId, e.target.value)}
-                          className="text-xs h-7 rounded-lg border px-1.5 bg-[hsl(var(--background))] max-w-[120px]"
-                        >
-                          {STATUS_OPTIONS.map((s) => (
-                            <option key={s} value={s}>
-                              {orderStatusConfig[s]?.label ?? s}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1 h-7 px-2"
-                          onClick={() => createShipment(order.dbId)}
-                          title="Create shipment"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <div className="text-center py-12 text-[hsl(var(--muted-foreground))]">
-            <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
-            No orders found
+      {loadError ? (
+        <EmptyState
+          icon={Package}
+          title="Could not load orders"
+          description="Check your database connection, then try again."
+          primaryAction={{ label: "Retry", onClick: () => void loadOrders() }}
+        />
+      ) : allOrders.length === 0 ? (
+        <EmptyState
+          icon={ShoppingBag}
+          title="No orders yet"
+          description="Orders will appear here after customers complete checkout."
+          primaryAction={{ label: "View storefront", href: "/products" }}
+          secondaryAction={{ label: "Refresh", onClick: () => void loadOrders(), variant: "outline" }}
+        />
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search orders..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl border bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {["all", "confirmed", "processing", "shipped", "delivered", "cancelled"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatusFilter(s)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-sm font-medium transition-all capitalize min-h-9",
+                    statusFilter === s
+                      ? "gradient-forest text-white"
+                      : "bg-[hsl(var(--card))] border hover:bg-[hsl(var(--muted))]"
+                  )}
+                >
+                  {s === "all" ? "All" : orderStatusConfig[s]?.label ?? s}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-        <div className="p-4 border-t flex items-center justify-between text-sm">
-          <p className="text-[hsl(var(--muted-foreground))]">
-            Showing {filtered.length} of {allOrders.length} orders
-          </p>
-        </div>
-      </div>
+
+          <div className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[hsl(var(--muted))]/30 border-b">
+                  <tr>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Order ID</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Customer</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden md:table-cell">Date</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden lg:table-cell">Items</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Total</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden sm:table-cell">Payment</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Status</th>
+                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[hsl(var(--border))]">
+                  {filtered.map((order, i) => {
+                    const canShip = canCreateShipment(order.status as OrderStatus);
+                    return (
+                      <motion.tr
+                        key={order.dbId}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                        className="hover:bg-[hsl(var(--muted))]/20 transition-colors"
+                      >
+                        <td className="p-3 sm:p-4 font-mono text-xs font-semibold">{order.id}</td>
+                        <td className="p-3 sm:p-4">
+                          <div className="min-w-0 max-w-[140px] sm:max-w-none">
+                            <p className="font-medium truncate">{order.customer}</p>
+                            <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{order.email}</p>
+                          </div>
+                        </td>
+                        <td className="p-3 sm:p-4 text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden md:table-cell">
+                          {formatDate(order.date)}
+                        </td>
+                        <td className="p-3 sm:p-4 hidden lg:table-cell">{order.items}</td>
+                        <td className="p-3 sm:p-4 font-bold text-[hsl(var(--primary))] whitespace-nowrap">
+                          {formatPrice(order.total)}
+                        </td>
+                        <td className="p-3 sm:p-4 hidden sm:table-cell">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--muted))]">
+                            {order.payment}
+                          </span>
+                        </td>
+                        <td className="p-3 sm:p-4">
+                          <StatusBadgeMenu
+                            order={order}
+                            onPick={(nextStatus) =>
+                              setPending({ type: "status", order, nextStatus })
+                            }
+                          />
+                        </td>
+                        <td className="p-3 sm:p-4">
+                          <Button
+                            size="sm"
+                            variant={canShip ? "outline" : "ghost"}
+                            className="gap-1.5 h-9 px-2.5"
+                            disabled={!canShip}
+                            onClick={() => setPending({ type: "shipment", order })}
+                            title={
+                              canShip
+                                ? "Create courier shipment"
+                                : "Confirm the order first, then create shipment"
+                            }
+                          >
+                            <Truck className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline text-xs">Ship</span>
+                          </Button>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length === 0 && (
+              <div className="text-center py-12 text-[hsl(var(--muted-foreground))]">
+                <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                No orders found
+              </div>
+            )}
+            <div className="p-4 border-t flex items-center justify-between text-sm">
+              <p className="text-[hsl(var(--muted-foreground))]">
+                Showing {filtered.length} of {allOrders.length} orders
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      <Dialog open={!!pending} onOpenChange={(open) => !busy && !open && setPending(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{dialogCopy.title}</DialogTitle>
+            <DialogDescription className="whitespace-pre-line pt-1">
+              {dialogCopy.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setPending(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={busy}
+              variant={pending?.type === "status" && pending.nextStatus === "cancelled" ? "destructive" : "default"}
+              onClick={() => void confirmAction()}
+              className="gap-2"
+            >
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+              {pending?.type === "shipment" ? "Create shipment" : "Confirm change"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { successResponse } from "@/lib/utils/api-response";
-import { registerSchema, loginSchema, updateProfileSchema } from "@/lib/validators/auth.validator";
+import {
+  registerSchema,
+  loginSchema,
+  updateProfileSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "@/lib/validators/auth.validator";
 import { parseJsonBody, type AuthenticatedRequest } from "@/lib/middleware/with-handler";
 import { NextRequest } from "next/server";
 import { authService } from "./auth.service";
@@ -32,6 +38,25 @@ export class AuthController {
     const input = updateProfileSchema.parse(body);
     const user = await authService.updateProfile(request.user.id, input);
     return successResponse(user, { message: "Profile updated" });
+  }
+
+  async forgotPassword(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = forgotPasswordSchema.parse(body);
+    const result = await authService.forgotPassword(input);
+    return successResponse(result, { message: result.message });
+  }
+
+  async resetPassword(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = resetPasswordSchema.parse(body);
+    const result = await authService.resetPassword(input);
+    return successResponse(result, { message: result.message });
+  }
+
+  /** Client clears JWT; endpoint exists for consistent logout UX / logging. */
+  async logout() {
+    return successResponse({ ok: true }, { message: "Logged out" });
   }
 }
 

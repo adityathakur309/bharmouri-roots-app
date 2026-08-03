@@ -7,3 +7,5 @@ export { wishlistApi } from "./wishlist.service";
 export { addressApi } from "./address.service";
 export { shippingApi } from "./shipping.service";
 export { userApi } from "./user.service";
+export { reviewApi } from "./review.service";
+export type { ReviewItem, ReviewSummary } from "./review.service";

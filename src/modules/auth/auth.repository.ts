@@ -13,12 +13,33 @@ export class AuthRepository {
     return User.findById(id);
   }
 
+  findByResetToken(tokenHash: string) {
+    return User.findOne({
+      resetPasswordToken: tokenHash,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select("+password +resetPasswordToken +resetPasswordExpires");
+  }
+
   create(data: Partial<IUser>) {
     return User.create(data);
   }
 
   updateById(id: string, data: Partial<IUser>) {
     return User.findByIdAndUpdate(id, data, { new: true });
+  }
+
+  setResetToken(userId: string, tokenHash: string, expires: Date) {
+    return User.findByIdAndUpdate(userId, {
+      resetPasswordToken: tokenHash,
+      resetPasswordExpires: expires,
+    });
+  }
+
+  clearResetTokenAndSetPassword(userId: string, passwordHash: string) {
+    return User.findByIdAndUpdate(userId, {
+      $set: { password: passwordHash },
+      $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 },
+    });
   }
 }
 

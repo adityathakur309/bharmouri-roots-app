@@ -1,14 +1,32 @@
 import { customAlphabet } from "nanoid";
 import { Types } from "mongoose";
 import { Address } from "@/lib/db/models";
-import { NotFoundError, ValidationError } from "@/lib/utils/errors";
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/utils/errors";
 import { sanitizeObject } from "@/lib/utils/sanitize";
-import type { CreateOrderInput, UpdateOrderStatusInput } from "@/lib/validators/order.validator";
+import { logger } from "@/lib/utils/logger";
+import {
+  assertOrderStatusTransition,
+  canCreateShipment,
+} from "@/lib/utils/order-transitions";
+import { buildPaginationMeta } from "@/lib/utils/query";
+import type {
+  CreateOrderInput,
+  UpdateOrderStatusInput,
+  OrderListQueryInput,
+  AdminOrderListQueryInput,
+} from "@/lib/validators/order.validator";
 import { cartService } from "@/modules/cart/cart.service";
+import { paymentService } from "@/modules/payment/payment.service";
+import { shippingService } from "@/modules/shipping/shipping.service";
+import {
+  assertStockAvailable,
+  decrementStock,
+} from "./inventory.service";
 import { orderRepository } from "./order.repository";
-import { razorpayClient } from "@/modules/payment/razorpay.client";
-import { mockPaymentClient } from "@/modules/payment/mock-payment.client";
-import { shiprocketClient } from "@/modules/shipping/shiprocket.client";
 import type { OrderStatus } from "@/types/order";
 
 export interface ShipmentTimelineEvent {
@@ -23,7 +41,9 @@ function buildShipmentTimeline(d: Record<string, unknown>): ShipmentTimelineEven
     {
       status: "placed",
       label: "Order Placed",
-      timestamp: d.createdAt ? new Date(d.createdAt as string).toISOString() : undefined,
+      timestamp: d.createdAt
+        ? new Date(d.createdAt as string).toISOString()
+        : undefined,
       description: "Your order has been received.",
     },
   ];
@@ -50,9 +70,11 @@ function buildShipmentTimeline(d: Record<string, unknown>): ShipmentTimelineEven
     events.push({
       status: "shipment_created",
       label: "Shipment Created",
-      timestamp: d.confirmedAt
-        ? new Date(d.confirmedAt as string).toISOString()
-        : undefined,
+      timestamp: d.shippedAt
+        ? undefined
+        : d.confirmedAt
+          ? new Date(d.confirmedAt as string).toISOString()
+          : undefined,
       description: d.trackingId
         ? `Tracking ID: ${d.trackingId}`
         : "Shipment booked with courier.",
@@ -102,15 +124,14 @@ function mapOrder(doc: Record<string, unknown> | object) {
     id: String(d._id),
     orderNumber: d.orderNumber,
     userId: user?._id ? String(user._id) : String(d.userId),
-    user: user
-      ? { name: user.name, email: user.email }
-      : undefined,
+    user: user ? { name: user.name, email: user.email } : undefined,
     items: d.items,
     shippingAddress: d.shippingAddress,
     status: d.status,
     paymentMethod: d.paymentMethod,
     paymentStatus: d.paymentStatus,
     razorpayOrderId: d.razorpayOrderId,
+    invoiceNumber: d.invoiceNumber,
     subtotal: d.subtotal,
     discount: d.discount,
     shippingCharge: d.shippingCharge,
@@ -139,8 +160,17 @@ export class OrderService {
       throw new ValidationError("Cart is empty");
     }
 
+    // Server-side stock + active product validation
+    await assertStockAvailable(
+      cart.items.map((i) => ({
+        productId: i.product.id,
+        quantity: i.quantity,
+        name: i.product.name,
+      }))
+    );
+
     let shippingAddress = input.shippingAddress
-      ? sanitizeObject(input.shippingAddress)
+      ? sanitizeObject({ ...input.shippingAddress })
       : undefined;
 
     if (input.addressId) {
@@ -160,12 +190,45 @@ export class OrderService {
       };
     }
 
-    if (!shippingAddress) {
+    if (!shippingAddress?.fullName || !shippingAddress.pincode) {
       throw new ValidationError("Shipping address is required");
     }
 
+    // Optional coupon from request applied on cart before totals (server source of truth)
+    if (input.couponCode && input.couponCode !== cart.couponCode) {
+      try {
+        await cartService.applyCoupon(userId, input.couponCode);
+      } catch {
+        // Invalid coupon on create — ignore and use cart coupon if any
+      }
+    }
+
+    const pricedCart = await cartService.getCart(userId);
+    if (pricedCart.items.length === 0) {
+      throw new ValidationError("Cart is empty");
+    }
+
+    // Soft serviceability check (does not block if Shiprocket is down)
+    try {
+      const serviceable = await shippingService.isServiceable(
+        String(shippingAddress.pincode),
+        input.paymentMethod === "cod",
+        Math.max(0.5, pricedCart.itemCount * 0.25)
+      );
+      if (!serviceable) {
+        throw new ValidationError(
+          "Delivery is not available for this pincode"
+        );
+      }
+    } catch (error) {
+      if (error instanceof ValidationError) throw error;
+      logger.warn("Serviceability check skipped due to upstream error", {
+        pincode: shippingAddress.pincode,
+      });
+    }
+
     const orderNumber = `ORD-${new Date().getFullYear()}-${generateOrderNumber()}`;
-    const items = cart.items.map((i) => ({
+    const items = pricedCart.items.map((i) => ({
       productId: new Types.ObjectId(i.product.id),
       name: i.product.name,
       slug: i.product.slug,
@@ -176,49 +239,71 @@ export class OrderService {
 
     const isCod = input.paymentMethod === "cod";
     const status: OrderStatus = isCod ? "confirmed" : "payment_pending";
-    const paymentStatus = isCod ? "pending" : "pending";
+
+    if (isCod) {
+      await decrementStock(
+        items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          name: i.name,
+        }))
+      );
+    }
 
     const order = await orderRepository.create({
       orderNumber,
       userId: new Types.ObjectId(userId),
       items,
-      shippingAddress,
+      shippingAddress: shippingAddress as never,
       status,
       paymentMethod: input.paymentMethod,
-      paymentStatus: isCod ? "pending" : "pending",
-      subtotal: cart.subtotal,
-      discount: cart.discountAmount,
-      shippingCharge: cart.shipping,
-      total: cart.total,
-      couponCode: cart.couponCode,
+      paymentStatus: "pending",
+      subtotal: pricedCart.subtotal,
+      discount: pricedCart.discountAmount,
+      shippingCharge: pricedCart.shipping,
+      total: pricedCart.total,
+      couponCode: pricedCart.couponCode,
+      stockDecremented: isCod,
       ...(isCod && { confirmedAt: new Date() }),
     });
 
+    if (isCod) {
+      await paymentService.createCodPaymentRecord(order, userId);
+    }
+
     await cartService.clearCart(userId);
+
+    logger.info("Order created", {
+      orderId: String(order._id),
+      orderNumber,
+      paymentMethod: input.paymentMethod,
+      total: pricedCart.total,
+    });
 
     return mapOrder(order.toObject());
   }
 
-  async listByUser(userId: string, page = 1, limit = 10) {
-    const [orders, total] = await orderRepository.findByUser(userId, page, limit);
+  async listByUser(userId: string, query: OrderListQueryInput) {
+    const [orders, total] = await orderRepository.findByUser(userId, query);
     return {
       orders: orders.map((o) => mapOrder(o)),
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      meta: buildPaginationMeta(query.page, query.limit, total),
     };
   }
 
-  async listAll(page = 1, limit = 20, status?: OrderStatus) {
-    const [orders, total] = await orderRepository.findAll(page, limit, status);
+  async listAll(query: AdminOrderListQueryInput) {
+    const [orders, total] = await orderRepository.findAll(query);
     return {
       orders: orders.map((o) => mapOrder(o)),
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      meta: buildPaginationMeta(query.page, query.limit, total),
     };
   }
 
   async getById(id: string, userId?: string, isAdmin = false) {
-    const order = userId && !isAdmin
-      ? await orderRepository.findByIdAndUser(id, userId)
-      : await orderRepository.findById(id);
+    const order =
+      userId && !isAdmin
+        ? await orderRepository.findByIdAndUser(id, userId)
+        : await orderRepository.findById(id);
 
     if (!order) throw new NotFoundError("Order not found");
     return mapOrder(order);
@@ -227,33 +312,26 @@ export class OrderService {
   async createRazorpayOrder(orderId: string, userId: string) {
     const order = await orderRepository.findByIdAndUser(orderId, userId);
     if (!order) throw new NotFoundError("Order not found");
-    if (order.paymentMethod !== "razorpay") {
-      throw new ValidationError("Order is not a Razorpay payment order");
-    }
-    if (order.paymentStatus === "paid") {
-      throw new ValidationError("Order already paid");
-    }
 
-    const amountPaise = Math.round(order.total * 100);
-    const razorpayOrder = await razorpayClient.createOrder(
-      amountPaise,
-      order.orderNumber,
-      { orderId: String(order._id) }
-    );
+    const intent = await paymentService.createPaymentIntent(order as never, userId);
 
-    await orderRepository.update(String(order._id), {
-      razorpayOrderId: razorpayOrder.id,
+    await orderRepository.update(orderId, {
+      razorpayOrderId: intent.razorpayOrderId,
       status: "payment_pending",
+      paymentStatus:
+        order.paymentStatus === "failed" ? "pending" : order.paymentStatus,
+      activePaymentId: new Types.ObjectId(intent.paymentId),
     });
 
+    // Keep response shape compatible with existing frontend client
     return {
-      razorpayOrderId: razorpayOrder.id,
-      amount: amountPaise,
-      currency: "INR",
-      keyId: razorpayClient.getKeyId(),
-      orderId: String(order._id),
-      orderNumber: order.orderNumber,
-      isMock: razorpayClient.isMockMode(),
+      razorpayOrderId: intent.razorpayOrderId,
+      amount: intent.amount,
+      currency: intent.currency,
+      keyId: intent.keyId,
+      orderId: intent.orderId,
+      orderNumber: intent.orderNumber,
+      isMock: intent.isMock,
     };
   }
 
@@ -270,52 +348,47 @@ export class OrderService {
     const order = await orderRepository.findByIdAndUser(orderId, userId);
     if (!order) throw new NotFoundError("Order not found");
 
-    if (razorpayClient.isMockMode() && data.mockOutcome) {
-      if (data.mockOutcome === "pending") {
-        const pending = await orderRepository.update(orderId, {
-          paymentStatus: "pending",
-          status: "payment_pending",
-          razorpayOrderId: data.razorpayOrderId,
-        });
-        return mapOrder(pending!);
-      }
-
-      if (data.mockOutcome === "failed") {
-        await orderRepository.update(orderId, {
-          paymentStatus: "failed",
-          status: "cancelled",
-          cancelledAt: new Date(),
-          razorpayOrderId: data.razorpayOrderId,
-        });
-        throw new ValidationError("Payment failed (demo)");
-      }
-    }
-
-    const valid = razorpayClient.verifySignature(
-      data.razorpayOrderId,
-      data.razorpayPaymentId,
-      data.razorpaySignature
+    const result = await paymentService.verifyPaymentAttempt(
+      order as never,
+      userId,
+      data
     );
 
-    if (!valid) {
-      await orderRepository.update(orderId, {
-        paymentStatus: "failed",
-        status: "cancelled",
-        cancelledAt: new Date(),
-      });
-      throw new ValidationError("Invalid payment signature");
+    if (result.outcome === "already_paid") {
+      const current = await orderRepository.findById(orderId);
+      return mapOrder(current!);
     }
 
-    if (
-      razorpayClient.isMockMode() &&
-      mockPaymentClient.outcomeFromPaymentId(data.razorpayPaymentId) === "failed"
-    ) {
+    if (result.outcome === "pending") {
+      const pending = await orderRepository.update(orderId, {
+        paymentStatus: "pending",
+        status: "payment_pending",
+        razorpayOrderId: data.razorpayOrderId,
+      });
+      return mapOrder(pending!);
+    }
+
+    if (result.outcome === "failed" || result.outcome === "cancelled") {
+      // Keep order retryable — do not cancel on transient payment failures
       await orderRepository.update(orderId, {
         paymentStatus: "failed",
-        status: "cancelled",
-        cancelledAt: new Date(),
+        status: "payment_pending",
+        razorpayOrderId: data.razorpayOrderId,
       });
-      throw new ValidationError("Payment failed (demo)");
+      throw new ValidationError(
+        result.failureReason ?? "Payment verification failed"
+      );
+    }
+
+    // outcome === paid
+    if (!order.stockDecremented) {
+      await decrementStock(
+        order.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          name: i.name,
+        }))
+      );
     }
 
     const updated = await orderRepository.update(orderId, {
@@ -325,7 +398,16 @@ export class OrderService {
       razorpayPaymentId: data.razorpayPaymentId,
       razorpaySignature: data.razorpaySignature,
       paidAt: new Date(),
-      confirmedAt: new Date(),
+      stockDecremented: true,
+      ...(result.paymentId && {
+        activePaymentId: new Types.ObjectId(result.paymentId),
+      }),
+      ...(result.invoiceNumber && { invoiceNumber: result.invoiceNumber }),
+    });
+
+    logger.info("Order marked paid", {
+      orderId,
+      invoiceNumber: result.invoiceNumber,
     });
 
     return mapOrder(updated!);
@@ -342,10 +424,12 @@ export class OrderService {
     let courierTrack: unknown[] = [];
     if (order.shiprocketShipmentId) {
       try {
-        const track = await shiprocketClient.trackShipment(order.shiprocketShipmentId);
+        const track = await shippingService.trackShipment(
+          order.shiprocketShipmentId
+        );
         courierTrack =
-          (track as { tracking_data?: { shipment_track?: unknown[] } })?.tracking_data
-            ?.shipment_track ?? [];
+          (track as { tracking_data?: { shipment_track?: unknown[] } })
+            ?.tracking_data?.shipment_track ?? [];
       } catch {
         courierTrack = [];
       }
@@ -361,6 +445,21 @@ export class OrderService {
     const order = await orderRepository.findById(orderId);
     if (!order) throw new NotFoundError("Order not found");
 
+    assertOrderStatusTransition(
+      order.status as OrderStatus,
+      input.status,
+      order.paymentMethod
+    );
+
+    // Prepaid: must be paid before admin confirmation
+    if (
+      input.status === "confirmed" &&
+      order.paymentMethod === "razorpay" &&
+      order.paymentStatus !== "paid"
+    ) {
+      throw new ValidationError("Cannot confirm an unpaid order");
+    }
+
     const updates: Record<string, unknown> = {
       status: input.status,
       adminNotes: input.adminNotes,
@@ -369,10 +468,34 @@ export class OrderService {
     if (input.status === "confirmed") updates.confirmedAt = new Date();
     if (input.status === "shipped") updates.shippedAt = new Date();
     if (input.status === "delivered") updates.deliveredAt = new Date();
-    if (input.status === "cancelled") updates.cancelledAt = new Date();
+    if (input.status === "cancelled") {
+      updates.cancelledAt = new Date();
+      // Restore stock if it was decremented and order not yet shipped
+      if (
+        order.stockDecremented &&
+        !["shipped", "delivered"].includes(order.status)
+      ) {
+        const { restoreStock } = await import("./inventory.service");
+        await restoreStock(
+          order.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            name: i.name,
+          }))
+        );
+        updates.stockDecremented = false;
+      }
+    }
 
-    if (input.status === "confirmed" && order.paymentMethod === "cod") {
-      updates.paymentStatus = "pending";
+    // COD collected when delivered (or admin explicitly confirms payment via markCodPaid)
+    if (
+      input.status === "delivered" &&
+      order.paymentMethod === "cod" &&
+      order.paymentStatus !== "paid"
+    ) {
+      updates.paymentStatus = "paid";
+      updates.paidAt = new Date();
+      await paymentService.markCodCollected(orderId);
     }
 
     const updated = await orderRepository.update(orderId, updates);
@@ -383,50 +506,38 @@ export class OrderService {
     const order = await orderRepository.findById(orderId);
     if (!order) throw new NotFoundError("Order not found");
 
-    if (!["confirmed", "processing", "paid"].includes(order.status)) {
-      throw new ValidationError("Order must be confirmed before shipping");
+    if (!canCreateShipment(order.status as OrderStatus)) {
+      throw new ValidationError(
+        "Order must be confirmed by admin before shipping"
+      );
     }
 
-    const addr = order.shippingAddress;
-    const payload = {
-      order_id: order.orderNumber,
-      order_date: new Date().toISOString().split("T")[0],
-      pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION ?? "Primary",
-      billing_customer_name: addr.fullName,
-      billing_last_name: "",
-      billing_address: addr.addressLine,
-      billing_city: addr.city,
-      billing_pincode: addr.pincode,
-      billing_state: addr.state,
-      billing_country: "India",
-      billing_email: addr.email,
-      billing_phone: addr.phone,
-      shipping_is_billing: true,
-      order_items: order.items.map((item) => ({
-        name: item.name,
-        sku: item.slug,
-        units: item.quantity,
-        selling_price: item.price,
-      })),
-      payment_method: order.paymentMethod === "cod" ? "COD" : "Prepaid",
-      sub_total: order.total,
-      length: 10,
-      breadth: 10,
-      height: 10,
-      weight: 0.5,
-    };
+    if (
+      order.paymentMethod === "razorpay" &&
+      order.paymentStatus !== "paid"
+    ) {
+      throw new ValidationError("Cannot ship an unpaid order");
+    }
 
-    const result = await shiprocketClient.createOrder(payload);
-    const shiprocketOrderId = String(result.order_id ?? result.shipment_id ?? "");
-    const awb = result.awb_code ?? result.awb;
+    if (order.shiprocketShipmentId && order.awbCode) {
+      throw new ConflictError("Shipment already created for this order");
+    }
+
+    const booking = await shippingService.createShipmentForOrder(order as never);
 
     const updated = await orderRepository.update(orderId, {
-      shiprocketOrderId,
-      shiprocketShipmentId: String(result.shipment_id ?? ""),
-      awbCode: awb,
-      trackingId: awb ?? result.tracking_id,
-      courierName: result.courier_name,
+      shiprocketOrderId: booking.shiprocketOrderId,
+      shiprocketShipmentId: booking.shiprocketShipmentId,
+      awbCode: booking.awbCode,
+      trackingId: booking.trackingId ?? booking.awbCode,
+      courierName: booking.courierName,
       status: "processing",
+    });
+
+    logger.info("Shipment created", {
+      orderId,
+      shiprocketShipmentId: booking.shiprocketShipmentId,
+      awb: booking.awbCode,
     });
 
     return mapOrder(updated!);
@@ -438,6 +549,11 @@ export class OrderService {
     if (order.paymentMethod !== "cod") {
       throw new ValidationError("Not a COD order");
     }
+    if (order.paymentStatus === "paid") {
+      return mapOrder(order);
+    }
+
+    await paymentService.markCodCollected(orderId);
 
     const updated = await orderRepository.update(orderId, {
       paymentStatus: "paid",

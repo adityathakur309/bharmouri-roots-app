@@ -1,29 +1,53 @@
 import { Order, type IOrder } from "@/lib/db/models";
 import { Types } from "mongoose";
-import type { OrderStatus } from "@/types/order";
+import {
+  buildEqualityFilter,
+  buildSearchFilter,
+  buildSort,
+  getSkip,
+} from "@/lib/utils/query";
+import type {
+  AdminOrderListQueryInput,
+  OrderListQueryInput,
+} from "@/lib/validators/order.validator";
+
+const ORDER_SORT_MAP = {
+  newest: { createdAt: -1 as const },
+  oldest: { createdAt: 1 as const },
+};
 
 export class OrderRepository {
-  findByUser(userId: string, page = 1, limit = 10) {
-    const skip = (page - 1) * limit;
+  findByUser(userId: string, query: OrderListQueryInput) {
+    const filter = {
+      userId: new Types.ObjectId(userId),
+      ...buildEqualityFilter({ status: query.status }),
+      ...buildSearchFilter(query.search, ["orderNumber"]),
+    };
+
+    const sort = buildSort(query.sort, ORDER_SORT_MAP);
+    const skip = getSkip(query.page, query.limit);
+
     return Promise.all([
-      Order.find({ userId: new Types.ObjectId(userId) })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Order.countDocuments({ userId: new Types.ObjectId(userId) }),
+      Order.find(filter).sort(sort).skip(skip).limit(query.limit).lean(),
+      Order.countDocuments(filter),
     ]);
   }
 
-  findAll(page = 1, limit = 20, status?: OrderStatus) {
-    const filter = status ? { status } : {};
-    const skip = (page - 1) * limit;
+  findAll(query: AdminOrderListQueryInput) {
+    const filter = {
+      ...buildEqualityFilter({ status: query.status }),
+      ...buildSearchFilter(query.search, ["orderNumber"]),
+    };
+
+    const sort = buildSort(query.sort, ORDER_SORT_MAP);
+    const skip = getSkip(query.page, query.limit);
+
     return Promise.all([
       Order.find(filter)
         .populate("userId", "name email")
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip(skip)
-        .limit(limit)
+        .limit(query.limit)
         .lean(),
       Order.countDocuments(filter),
     ]);

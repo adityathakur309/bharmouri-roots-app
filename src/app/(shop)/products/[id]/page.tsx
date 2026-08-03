@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProductCard } from "@/components/shared/product-card";
+import { ProductReviews } from "@/components/product/product-reviews";
 import { useCart } from "@/hooks/use-cart";
 import { productApi, shippingApi } from "@/services/api";
 import type { Product } from "@/types/product";
@@ -20,16 +21,9 @@ import { useWishlist } from "@/hooks/use-wishlist";
 import { useWishlistStore } from "@/stores/wishlist-store";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { products } from "@/lib/mock-data";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { normalizeProductImageUrl } from "@/lib/utils/image-url";
-
-const mockReviews = [
-  { id: 1, name: "Priya S.", avatar: "https://i.pravatar.cc/60?img=1", rating: 5, date: "Dec 12, 2024", comment: "Absolutely love this product! The quality is exceptional and it tastes just like what I remember from my travels to Himachal.", verified: true },
-  { id: 2, name: "Rahul V.", avatar: "https://i.pravatar.cc/60?img=7", rating: 5, date: "Dec 5, 2024", comment: "Superb quality, genuine product. Packaging was perfect. Will definitely order again!", verified: true },
-  { id: 3, name: "Anita K.", avatar: "https://i.pravatar.cc/60?img=5", rating: 4, date: "Nov 28, 2024", comment: "Good product, delivered on time. The quantity was exactly as mentioned. Recommended!", verified: true },
-];
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -38,6 +32,7 @@ export default function ProductDetailPage() {
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [deliveryEstimate, setDeliveryEstimate] = useState<string | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -56,22 +51,23 @@ export default function ProductDetailPage() {
     setLoading(true);
     productApi
       .getById(slug)
-      .then((res) => {
+      .then(async (res) => {
         setProduct(res.data);
-        setRelated(
-          products
-            .filter((p) => p.categorySlug === res.data.categorySlug && p.id !== res.data.id)
-            .slice(0, 4)
-        );
+        setReviewCount(res.data.reviews ?? 0);
+        try {
+          const relatedRes = await productApi.list({ category: res.data.categorySlug, limit: 8 });
+          setRelated(
+            (relatedRes.data ?? [])
+              .filter((item) => item.id !== res.data.id)
+              .slice(0, 4)
+          );
+        } catch {
+          setRelated([]);
+        }
       })
       .catch(() => {
-        const mock = products.find((p) => p.slug === slug);
-        if (mock) {
-          setProduct(mock);
-          setRelated(
-            products.filter((p) => p.categorySlug === mock.categorySlug && p.id !== mock.id).slice(0, 4)
-          );
-        }
+        setProduct(null);
+        setRelated([]);
       })
       .finally(() => setLoading(false));
   }, [slug]);
@@ -331,7 +327,7 @@ export default function ProductDetailPage() {
           <Tabs defaultValue="description">
             <TabsList className="mb-6">
               <TabsTrigger value="description">Description</TabsTrigger>
-              <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
+              <TabsTrigger value="reviews">Reviews ({reviewCount})</TabsTrigger>
               <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
             </TabsList>
 
@@ -351,46 +347,19 @@ export default function ProductDetailPage() {
             </TabsContent>
 
             <TabsContent value="reviews">
-              <div className="space-y-4">
-                <div className="flex items-center gap-6 p-5 bg-[hsl(var(--muted))]/30 rounded-2xl mb-6">
-                  <div className="text-center">
-                    <div className="text-5xl font-bold text-[hsl(var(--primary))]">{product.rating}</div>
-                    <div className="flex items-center gap-0.5 justify-center my-1">
-                      {[...Array(5)].map((_, i) => <Star key={i} className={cn("w-4 h-4", i < Math.floor(product.rating) ? "fill-amber-400 text-amber-400" : "text-gray-300")} />)}
-                    </div>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">{product.reviews} reviews</p>
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    {[5, 4, 3, 2, 1].map((r) => (
-                      <div key={r} className="flex items-center gap-2">
-                        <span className="text-xs w-4">{r}</span>
-                        <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--muted))]">
-                          <div className="h-full rounded-full bg-amber-400" style={{ width: `${r === 5 ? 70 : r === 4 ? 20 : r === 3 ? 8 : 2}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {mockReviews.map((review) => (
-                  <motion.div key={review.id} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="p-5 border rounded-2xl">
-                    <div className="flex items-start gap-3">
-                      <img src={review.avatar} alt={review.name} className="w-10 h-10 rounded-full object-cover" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm">{review.name}</span>
-                          {review.verified && <Badge variant="green" className="text-[10px] py-0">Verified</Badge>}
-                          <span className="text-xs text-[hsl(var(--muted-foreground))] ml-auto">{review.date}</span>
-                        </div>
-                        <div className="flex items-center gap-0.5 mb-2">
-                          {[...Array(5)].map((_, i) => <Star key={i} className={cn("w-3 h-3", i < review.rating ? "fill-amber-400 text-amber-400" : "text-gray-300")} />)}
-                        </div>
-                        <p className="text-sm text-[hsl(var(--foreground))]/80">{review.comment}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
+              <ProductReviews
+                productIdOrSlug={product.id}
+                initialAverage={product.rating}
+                initialTotal={product.reviews}
+                onSummaryChange={(summary) => {
+                  setReviewCount(summary.total);
+                  setProduct((prev) =>
+                    prev
+                      ? { ...prev, rating: summary.average, reviews: summary.total }
+                      : prev
+                  );
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="shipping">

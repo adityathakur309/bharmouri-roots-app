@@ -5,9 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, SlidersHorizontal, X, ChevronDown, Star, Grid3X3, List, Leaf } from "lucide-react";
 import { ProductCard } from "@/components/shared/product-card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { products as fallbackProducts, categories } from "@/lib/mock-data";
+import { categories } from "@/lib/mock-data";
 import { productApi } from "@/services/api";
 import type { Product } from "@/types/product";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,7 +42,7 @@ function ProductsContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [catalog, setCatalog] = useState<Product[]>(fallbackProducts);
+  const [catalog, setCatalog] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,10 +61,9 @@ function ProductsContent() {
         sort: sortMap[sortBy],
       })
       .then((res) => {
-        const list = res.data?.length ? res.data : fallbackProducts;
-        setCatalog(list);
+        setCatalog(res.data ?? []);
       })
-      .catch(() => setCatalog(fallbackProducts))
+      .catch(() => setCatalog([]))
       .finally(() => setLoading(false));
   }, [selectedCategory, search, sortBy]);
 
@@ -351,7 +351,14 @@ function ProductsContent() {
 
           {/* Products grid */}
           <div className="flex-1 min-w-0">
-            {filtered.length === 0 ? (
+            {!loading && catalog.length === 0 ? (
+              <EmptyState
+                title="Products coming soon"
+                description="No products are available yet. Please check back soon."
+                primaryAction={{ label: "Browse Home", href: "/" }}
+                className="py-12"
+              />
+            ) : filtered.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
                 <span className="text-6xl mb-4 block">🔍</span>
                 <h3 className="text-xl font-bold mb-2">No products found</h3>

@@ -1,9 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/connect";
 import { errorResponse } from "@/lib/utils/api-response";
-import { checkRateLimit, getClientIp } from "./rate-limit";
-import { requireAuth } from "./auth.middleware";
-import { requireAdmin } from "./admin.middleware";
+import { ValidationError } from "@/lib/utils/errors";
+import { logger } from "@/lib/utils/logger";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "./rate-limit";
+import { requireAuth, requireAdmin } from "./auth.middleware";
 import type { SessionUser } from "@/types/auth";
 
 export type RouteContext = {
@@ -42,6 +43,29 @@ interface AdminHandlerOptions extends BaseHandlerOptions {
   admin: true;
 }
 
+function rateLimitResponse(result: {
+  resetAt: number;
+  limit: number;
+}): NextResponse {
+  const retryAfter = Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Too many requests",
+      code: "RATE_LIMIT",
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryAfter),
+        "X-RateLimit-Limit": String(result.limit),
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": String(Math.ceil(result.resetAt / 1000)),
+      },
+    }
+  );
+}
+
 export function withHandler(
   handler: HandlerWithUserFn,
   options: AuthHandlerOptions | AdminHandlerOptions
@@ -61,10 +85,11 @@ export function withHandler(
       if (options.rateLimit !== false) {
         const ip = getClientIp(request);
         const path = new URL(request.url).pathname;
-        const limit = checkRateLimit(`${ip}:${path}`, options.rateLimit);
+        const policy = options.rateLimit ?? RATE_LIMITS.default;
+        const limit = checkRateLimit(`${ip}:${path}`, policy);
         if (!limit.allowed) {
-          const { AppError } = await import("@/lib/utils/errors");
-          throw new AppError("Too many requests", 429, "RATE_LIMIT");
+          logger.warn("Rate limit exceeded", { ip, path, limit: limit.limit });
+          return rateLimitResponse(limit);
         }
       }
 
@@ -92,5 +117,9 @@ export function withHandler(
 }
 
 export async function parseJsonBody<T>(request: NextRequest): Promise<T> {
-  return request.json() as Promise<T>;
+  try {
+    return (await request.json()) as T;
+  } catch {
+    throw new ValidationError("Invalid JSON body");
+  }
 }

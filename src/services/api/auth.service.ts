@@ -32,7 +32,18 @@ export const authApi = {
   updateProfile: (data: Partial<Pick<AuthUser, "name" | "phone" | "avatar">>) =>
     apiRequest<AuthUser>("patch", "/auth/me", data),
 
-  logout: () => {
+  forgotPassword: (email: string) =>
+    apiRequest<{ message: string }>("post", "/auth/forgot-password", { email }),
+
+  resetPassword: (data: { token: string; password: string }) =>
+    apiRequest<{ message: string }>("post", "/auth/reset-password", data),
+
+  logout: async () => {
+    try {
+      await apiRequest<{ ok: boolean }>("post", "/auth/logout");
+    } catch {
+      // Client logout must succeed even if the network call fails
+    }
     setStoredToken(null);
   },
 };

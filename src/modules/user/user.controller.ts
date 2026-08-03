@@ -1,20 +1,17 @@
-import { z } from "zod";
 import { successResponse } from "@/lib/utils/api-response";
+import { parseQuery } from "@/lib/utils/query";
+import {
+  updateUserSchema,
+  userListQuerySchema,
+} from "@/lib/validators/user.validator";
 import { parseJsonBody, type AuthenticatedRequest, type RouteContext } from "@/lib/middleware/with-handler";
 import { userService } from "./user.service";
-
-const updateUserSchema = z.object({
-  role: z.enum(["user", "admin"]).optional(),
-  isActive: z.boolean().optional(),
-});
 
 export class UserController {
   async list(request: AuthenticatedRequest) {
     const { searchParams } = new URL(request.url);
-    const page = Number(searchParams.get("page") ?? 1);
-    const limit = Number(searchParams.get("limit") ?? 20);
-    const search = searchParams.get("search") ?? undefined;
-    const result = await userService.list(page, limit, search);
+    const query = parseQuery(userListQuerySchema, searchParams);
+    const result = await userService.list(query);
     return successResponse(result.users, { meta: result.meta });
   }
 

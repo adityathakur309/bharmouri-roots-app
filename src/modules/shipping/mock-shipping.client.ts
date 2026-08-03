@@ -2,12 +2,31 @@ import { customAlphabet } from "nanoid";
 
 const trackingAlphabet = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 10);
 
+/**
+ * Prefer explicit SHIPPING_MOCK_MODE.
+ * - "true"  → always mock (safe for local/dev even if credentials exist)
+ * - "false" → live Shiprocket when credentials are usable
+ * - unset   → auto: live when credentials look real, else mock
+ */
 export function isMockShippingMode(): boolean {
-  const email = process.env.SHIPROCKET_EMAIL;
-  const password = process.env.SHIPROCKET_PASSWORD;
-  if (!email || !password) return true;
-  if (email.includes("example.com") || password.includes("your_")) return true;
-  return process.env.SHIPPING_MOCK_MODE === "true";
+  const flag = process.env.SHIPPING_MOCK_MODE?.trim().toLowerCase();
+  if (flag === "true") return true;
+
+  const email = process.env.SHIPROCKET_EMAIL?.trim();
+  const password = process.env.SHIPROCKET_PASSWORD?.trim();
+  const credentialsUsable = Boolean(
+    email &&
+      password &&
+      password.length >= 4 &&
+      !email.includes("example.com") &&
+      !password.includes("your_")
+  );
+
+  if (flag === "false") {
+    return !credentialsUsable;
+  }
+
+  return !credentialsUsable;
 }
 
 export class MockShippingClient {
@@ -47,6 +66,15 @@ export class MockShippingClient {
       awb_code: trackingId,
       tracking_id: trackingId,
       courier_name: "Himalaya Express (Demo)",
+      courier_company_id: 101,
+    };
+  }
+
+  async assignAwb(shipmentId: number, _courierId?: number) {
+    return {
+      awb_code: `BR${shipmentId}`,
+      courier_name: "Himalaya Express (Demo)",
+      courier_company_id: 101,
     };
   }
 

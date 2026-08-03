@@ -2,14 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Search, Mail, Shield, Ban } from "lucide-react";
+import { Search, Mail, Shield, Ban, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { userApi } from "@/services/api";
-import { withFallbackArray } from "@/lib/api-fallback";
-import { fallbackAdminUsers, type AdminUserRow } from "@/lib/admin-fallback-data";
 import { useToast } from "@/hooks/use-toast";
+import { EmptyState } from "@/components/shared/empty-state";
+
+type AdminUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  role: "user" | "admin";
+  joined: string;
+  orders: number;
+  spent: number;
+  status: "active" | "inactive";
+};
 
 function mapUsers(
   data: Array<{
@@ -38,19 +49,17 @@ function mapUsers(
 export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [users, setUsers] = useState<AdminUserRow[]>([]);
-  const [usingDemo, setUsingDemo] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const { toast } = useToast();
 
   const loadUsers = useCallback(async () => {
     try {
       const res = await userApi.adminList({ limit: 100, search: search || undefined });
-      const rows = mapUsers(res.data ?? []);
-      const list = withFallbackArray(rows.length ? rows : null, fallbackAdminUsers);
-      setUsers(list);
-      setUsingDemo(!rows.length);
+      setUsers(mapUsers(res.data ?? []));
+      setLoadError(false);
     } catch {
-      setUsers(fallbackAdminUsers);
-      setUsingDemo(true);
+      setUsers([]);
+      setLoadError(true);
     }
   }, [search]);
 
@@ -60,10 +69,6 @@ export default function AdminUsersPage() {
   }, [loadUsers, search]);
 
   const toggleActive = async (user: AdminUserRow) => {
-    if (usingDemo && !user.id.match(/^[a-f0-9]{24}$/i)) {
-      toast({ title: "Demo user — connect API to manage users" });
-      return;
-    }
     const next = user.status === "active" ? false : true;
     try {
       await userApi.update(user.id, { isActive: next });
@@ -84,12 +89,6 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-5">
-      {usingDemo && (
-        <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-          Showing demo users — register accounts or run seed to see real data.
-        </p>
-      )}
-
       <div>
         <h1 className="text-2xl font-bold">Users</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">{users.length} registered users</p>
@@ -105,19 +104,33 @@ export default function AdminUsersPage() {
         />
       </div>
 
+      {loadError ? (
+        <EmptyState
+          icon={Users}
+          title="Could not load users"
+          description="Check your database connection, then try again."
+          primaryAction={{ label: "Retry", onClick: () => void loadUsers() }}
+        />
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No users yet"
+          description="Registered customers and admins will show up here."
+          primaryAction={{ label: "Refresh", onClick: () => void loadUsers() }}
+        />
+      ) : (
       <div className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[hsl(var(--muted))]/30 border-b">
               <tr>
-                {["User", "Role", "Joined", "Orders", "Total Spent", "Status", "Actions"].map((h) => (
-                  <th
-                    key={h}
-                    className="text-left p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]"
-                  >
-                    {h}
-                  </th>
-                ))}
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">User</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Role</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] hidden md:table-cell">Joined</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] hidden lg:table-cell">Orders</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] hidden lg:table-cell">Total Spent</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Status</th>
+                <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[hsl(var(--border))]">
@@ -129,20 +142,20 @@ export default function AdminUsersPage() {
                   transition={{ delay: i * 0.08 }}
                   className="hover:bg-[hsl(var(--muted))]/20 transition-colors"
                 >
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
+                  <td className="p-3 sm:p-4">
+                    <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={user.avatar}
                         alt={user.name}
-                        className="w-9 h-9 rounded-xl object-cover border"
+                        className="w-9 h-9 rounded-xl object-cover border shrink-0"
                       />
-                      <div>
-                        <p className="font-medium">{user.name}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{user.email}</p>
+                      <div className="min-w-0 max-w-[140px] sm:max-w-none">
+                        <p className="font-medium truncate">{user.name}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{user.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="p-4">
+                  <td className="p-3 sm:p-4">
                     {user.role === "admin" ? (
                       <Badge variant="saffron" className="gap-1 text-[10px]">
                         <Shield className="w-3 h-3" /> Admin
@@ -153,12 +166,12 @@ export default function AdminUsersPage() {
                       </Badge>
                     )}
                   </td>
-                  <td className="p-4 text-[hsl(var(--muted-foreground))]">{formatDate(user.joined)}</td>
-                  <td className="p-4 font-medium">{user.orders}</td>
-                  <td className="p-4 font-bold text-[hsl(var(--primary))]">
+                  <td className="p-3 sm:p-4 text-[hsl(var(--muted-foreground))] hidden md:table-cell">{formatDate(user.joined)}</td>
+                  <td className="p-3 sm:p-4 font-medium hidden lg:table-cell">{user.orders}</td>
+                  <td className="p-3 sm:p-4 font-bold text-[hsl(var(--primary))] hidden lg:table-cell">
                     ₹{user.spent.toLocaleString("en-IN")}
                   </td>
-                  <td className="p-4">
+                  <td className="p-3 sm:p-4">
                     <span
                       className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                         user.status === "active"
@@ -169,12 +182,12 @@ export default function AdminUsersPage() {
                       {user.status === "active" ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="p-4">
+                  <td className="p-3 sm:p-4">
                     <div className="flex gap-1">
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 px-0"
+                        className="h-9 w-9 px-0"
                         title="Send email"
                         onClick={() => (window.location.href = `mailto:${user.email}`)}
                       >
@@ -184,7 +197,7 @@ export default function AdminUsersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-7 w-7 px-0 text-red-500 hover:bg-red-50"
+                          className="h-9 w-9 px-0 text-red-500 hover:bg-red-50"
                           title={user.status === "active" ? "Deactivate" : "Activate"}
                           onClick={() => toggleActive(user)}
                         >
@@ -198,7 +211,13 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-sm text-[hsl(var(--muted-foreground))]">
+            No users match your search
+          </div>
+        )}
       </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,16 @@
 import { z } from "zod";
+import { paginationSchema } from "@/lib/utils/query";
+
+const orderStatusEnum = z.enum([
+  "pending",
+  "payment_pending",
+  "paid",
+  "confirmed",
+  "processing",
+  "shipped",
+  "delivered",
+  "cancelled",
+]);
 
 const addressInputSchema = z.object({
   fullName: z.string().min(2),
@@ -19,18 +31,23 @@ export const createOrderSchema = z.object({
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum([
-    "pending",
-    "payment_pending",
-    "paid",
-    "confirmed",
-    "processing",
-    "shipped",
-    "delivered",
-    "cancelled",
-  ]),
+  status: orderStatusEnum,
   adminNotes: z.string().optional(),
 });
+
+export const orderListQuerySchema = paginationSchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  status: orderStatusEnum.optional(),
+  search: z.string().max(100).optional(),
+  sort: z.enum(["newest", "oldest"]).optional(),
+});
+
+export const adminOrderListQuerySchema = orderListQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type OrderListQueryInput = z.infer<typeof orderListQuerySchema>;
+export type AdminOrderListQueryInput = z.infer<typeof adminOrderListQuerySchema>;
 
 export const verifyPaymentSchema = z.object({
   orderId: z.string().min(1),

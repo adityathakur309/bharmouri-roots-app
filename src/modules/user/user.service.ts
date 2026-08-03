@@ -1,13 +1,15 @@
 import { NotFoundError } from "@/lib/utils/errors";
 import { toPublicUser } from "@/lib/utils/auth-helper";
+import { buildPaginationMeta } from "@/lib/utils/query";
+import type { UserListQueryInput } from "@/lib/validators/user.validator";
 import { userRepository } from "./user.repository";
 
 export class UserService {
-  async list(page = 1, limit = 20, search?: string) {
-    const [users, total] = await userRepository.findAll(page, limit, search);
+  async list(query: UserListQueryInput) {
+    const [users, total] = await userRepository.findAll(query);
     return {
       users: users.map((u) => toPublicUser(u as Parameters<typeof toPublicUser>[0])),
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      meta: buildPaginationMeta(query.page, query.limit, total),
     };
   }
 

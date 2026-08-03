@@ -80,7 +80,7 @@ export async function connectDB(): Promise<typeof mongoose> {
     const message = error instanceof Error ? error.message : String(error);
     logger.error("MongoDB connection failed", message);
     throw new Error(
-      `Could not connect to MongoDB. Check MONGODB_URI, Atlas IP whitelist (0.0.0.0/0 for dev), and network. Details: ${message}`
+      `Could not connect to MongoDB. In Atlas → Network Access, allow your IP or use 0.0.0.0/0 (CIDR with /0 — not 0.0.0 or 0.0.0.0 alone). Also verify MONGODB_URI user/password and cluster. Details: ${message}`
     );
   }
 }

@@ -1,32 +1,34 @@
 import { Product, type IProduct } from "@/lib/db/models";
+import {
+  buildEqualityFilter,
+  buildSort,
+  getSkip,
+} from "@/lib/utils/query";
 import type { ProductQueryInput } from "@/lib/validators/product.validator";
+
+const PRODUCT_SORT_MAP = {
+  price_asc: { price: 1 as const },
+  price_desc: { price: -1 as const },
+  rating: { rating: -1 as const },
+  newest: { createdAt: -1 as const },
+};
+
 export class ProductRepository {
   findMany(query: ProductQueryInput) {
-    const filter: Record<string, unknown> = { isActive: true };
+    const filter: Record<string, unknown> = {
+      ...buildEqualityFilter({
+        isActive: true,
+        categorySlug: query.category,
+        isFeatured: query.featured ? true : undefined,
+      }),
+    };
 
-    if (query.category) filter.categorySlug = query.category;
-    if (query.featured) filter.isFeatured = true;
-    if (query.search) {
-      filter.$text = { $search: query.search };
+    if (query.search?.trim()) {
+      filter.$text = { $search: query.search.trim() };
     }
 
-    let sort: Record<string, 1 | -1> = { createdAt: -1 };
-    switch (query.sort) {
-      case "price_asc":
-        sort = { price: 1 };
-        break;
-      case "price_desc":
-        sort = { price: -1 };
-        break;
-      case "rating":
-        sort = { rating: -1 };
-        break;
-      case "newest":
-        sort = { createdAt: -1 };
-        break;
-    }
-
-    const skip = (query.page - 1) * query.limit;
+    const sort = buildSort(query.sort, PRODUCT_SORT_MAP);
+    const skip = getSkip(query.page, query.limit);
 
     return Promise.all([
       Product.find(filter).sort(sort).skip(skip).limit(query.limit).lean(),
@@ -35,13 +37,22 @@ export class ProductRepository {
   }
 
   findAllAdmin(query: ProductQueryInput) {
-    const filter: Record<string, unknown> = {};
-    if (query.search) filter.$text = { $search: query.search };
-    if (query.category) filter.categorySlug = query.category;
+    const filter: Record<string, unknown> = {
+      ...buildEqualityFilter({
+        categorySlug: query.category,
+        isFeatured: query.featured ? true : undefined,
+      }),
+    };
 
-    const skip = (query.page - 1) * query.limit;
+    if (query.search?.trim()) {
+      filter.$text = { $search: query.search.trim() };
+    }
+
+    const sort = buildSort(query.sort, PRODUCT_SORT_MAP);
+    const skip = getSkip(query.page, query.limit);
+
     return Promise.all([
-      Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(query.limit).lean(),
+      Product.find(filter).sort(sort).skip(skip).limit(query.limit).lean(),
       Product.countDocuments(filter),
     ]);
   }
@@ -64,10 +75,6 @@ export class ProductRepository {
 
   delete(id: string) {
     return Product.findByIdAndUpdate(id, { isActive: false }, { new: true }).lean();
-  }
-
-  hardDelete(id: string) {
-    return Product.findByIdAndDelete(id);
   }
 }
 

@@ -1,9 +1,12 @@
 import { successResponse } from "@/lib/utils/api-response";
+import { parseQuery } from "@/lib/utils/query";
 import {
   createOrderSchema,
   updateOrderStatusSchema,
   verifyPaymentSchema,
   createRazorpayOrderSchema,
+  orderListQuerySchema,
+  adminOrderListQuerySchema,
 } from "@/lib/validators/order.validator";
 import {
   parseJsonBody,
@@ -12,7 +15,6 @@ import {
 } from "@/lib/middleware/with-handler";
 import { NextRequest } from "next/server";
 import { orderService } from "./order.service";
-import type { OrderStatus } from "@/types/order";
 
 export class OrderController {
   async create(request: AuthenticatedRequest) {
@@ -24,18 +26,15 @@ export class OrderController {
 
   async listMine(request: AuthenticatedRequest) {
     const { searchParams } = new URL(request.url);
-    const page = Number(searchParams.get("page") ?? 1);
-    const limit = Number(searchParams.get("limit") ?? 10);
-    const result = await orderService.listByUser(request.user.id, page, limit);
+    const query = parseQuery(orderListQuerySchema, searchParams);
+    const result = await orderService.listByUser(request.user.id, query);
     return successResponse(result.orders, { meta: result.meta });
   }
 
   async listAll(request: NextRequest) {
     const { searchParams } = new URL(request.url);
-    const page = Number(searchParams.get("page") ?? 1);
-    const limit = Number(searchParams.get("limit") ?? 20);
-    const status = searchParams.get("status") as OrderStatus | undefined;
-    const result = await orderService.listAll(page, limit, status);
+    const query = parseQuery(adminOrderListQuerySchema, searchParams);
+    const result = await orderService.listAll(query);
     return successResponse(result.orders, { meta: result.meta });
   }
 
@@ -82,6 +81,12 @@ export class OrderController {
       isAdmin
     );
     return successResponse(result);
+  }
+
+  async markCodPaid(request: AuthenticatedRequest, context: RouteContext) {
+    const { id } = await context.params;
+    const order = await orderService.markCodPaid(id);
+    return successResponse(order, { message: "COD payment marked as paid" });
   }
 
   async createShipment(request: AuthenticatedRequest, context: RouteContext) {

@@ -1,34 +1,44 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { canAccessAdminPanel, canAccessCustomerDashboard } from "@/lib/rbac";
 import { getDashboardPathForRole } from "@/lib/auth-routes";
 
 export function RoleGuard({
   children,
   requireAdmin = false,
+  requireCustomer = false,
 }: {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  /** When true, admins are redirected to the admin panel (customer dashboard). */
+  requireCustomer?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     if (isLoading) return;
+
     if (!isAuthenticated || !user) {
-      router.replace("/login");
+      const login = `/login?callbackUrl=${encodeURIComponent(pathname || "/")}`;
+      router.replace(login);
       return;
     }
-    if (requireAdmin && user.role !== "admin") {
-      router.replace(getDashboardPathForRole("user"));
+
+    if (requireAdmin && !canAccessAdminPanel(user.role)) {
+      router.replace("/forbidden");
       return;
     }
-    if (!requireAdmin && user.role === "admin") {
+
+    const treatAsCustomerArea = requireCustomer || !requireAdmin;
+    if (treatAsCustomerArea && user.role === "admin" && !requireAdmin) {
       router.replace(getDashboardPathForRole("admin"));
     }
-  }, [isLoading, isAuthenticated, user, requireAdmin, router]);
+  }, [isLoading, isAuthenticated, user, requireAdmin, requireCustomer, router, pathname]);
 
   if (isLoading || !isAuthenticated || !user) {
     return (
@@ -38,8 +48,10 @@ export function RoleGuard({
     );
   }
 
-  if (requireAdmin && user.role !== "admin") return null;
-  if (!requireAdmin && user.role === "admin") return null;
+  if (requireAdmin && !canAccessAdminPanel(user.role)) return null;
+  if ((requireCustomer || !requireAdmin) && !requireAdmin && !canAccessCustomerDashboard(user.role)) {
+    return null;
+  }
 
   return <>{children}</>;
 }

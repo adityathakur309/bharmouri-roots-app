@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { productApi } from "@/services/api";
 import type { Product } from "@/types/product";
-import { withFallbackArray } from "@/lib/api-fallback";
-import { fallbackProducts } from "@/lib/admin-fallback-data";
 import { ProductFormDialog } from "@/components/admin/product-form-dialog";
+import { EmptyState } from "@/components/shared/empty-state";
 import { motion } from "framer-motion";
 import { Search, Plus, Edit, Trash2, Eye, Star, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ export default function AdminProductsPage() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [products, setProducts] = useState<Product[]>([]);
-  const [usingDemo, setUsingDemo] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const { toast } = useToast();
@@ -28,17 +27,18 @@ export default function AdminProductsPage() {
   const loadProducts = useCallback(async () => {
     try {
       const res = await productApi.adminList({ limit: 100 });
-      const list = withFallbackArray(res.data, fallbackProducts);
-      setProducts(list);
-      setUsingDemo(!res.data?.length);
+      setProducts(res.data ?? []);
+      setLoadError(false);
     } catch {
-      setProducts(fallbackProducts);
-      setUsingDemo(true);
+      setProducts([]);
+      setLoadError(true);
     }
   }, []);
 
   useEffect(() => {
-    loadProducts();
+    // Initial admin list fetch
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount/load
+    void loadProducts();
   }, [loadProducts]);
 
   const categories = ["all", ...Array.from(new Set(products.map((p) => p.categorySlug)))];
@@ -51,11 +51,6 @@ export default function AdminProductsPage() {
 
   const handleDelete = async (product: Product) => {
     if (!confirm(`Delete "${product.name}"?`)) return;
-    if (usingDemo && product.id.startsWith("demo")) {
-      setProducts((prev) => prev.filter((p) => p.id !== product.id));
-      toast({ title: "Demo product removed from view" });
-      return;
-    }
     try {
       await productApi.remove(product.id);
       toast({ title: "Product removed" });
@@ -67,12 +62,6 @@ export default function AdminProductsPage() {
 
   return (
     <div className="space-y-5">
-      {usingDemo && (
-        <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-          Showing demo products — add real products via API or run <code className="font-mono">npm run seed</code>.
-        </p>
-      )}
-
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Products</h1>
@@ -89,6 +78,31 @@ export default function AdminProductsPage() {
         </Button>
       </div>
 
+      {loadError ? (
+        <EmptyState
+          icon={Package}
+          title="Could not load products"
+          description="Check your database connection, then try again."
+          primaryAction={{ label: "Retry", onClick: () => void loadProducts() }}
+          secondaryAction={{ label: "Add Product", onClick: () => { setEditing(null); setDialogOpen(true); } }}
+        />
+      ) : products.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title="No products yet"
+          description="Your catalog is empty. Add your first product to start selling."
+          primaryAction={{
+            label: "Add Product",
+            onClick: () => {
+              setEditing(null);
+              setDialogOpen(true);
+            },
+          }}
+        />
+      ) : null}
+
+      {products.length > 0 && (
+      <>
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
@@ -152,9 +166,9 @@ export default function AdminProductsPage() {
                           }}
                         />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-medium line-clamp-1">{product.name}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{product.origin}</p>
+                      <div className="min-w-0 max-w-[120px] sm:max-w-[200px] md:max-w-none">
+                        <p className="font-medium line-clamp-1 truncate">{product.name}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{product.origin}</p>
                       </div>
                     </div>
                   </td>
@@ -222,10 +236,12 @@ export default function AdminProductsPage() {
         {filtered.length === 0 && (
           <div className="text-center py-12">
             <Package className="w-10 h-10 mx-auto mb-2 text-[hsl(var(--muted-foreground))]/40" />
-            <p className="text-[hsl(var(--muted-foreground))]">No products found</p>
+            <p className="text-[hsl(var(--muted-foreground))]">No products match your filters</p>
           </div>
         )}
       </div>
+      </>
+      )}
 
       <ProductFormDialog
         open={dialogOpen}

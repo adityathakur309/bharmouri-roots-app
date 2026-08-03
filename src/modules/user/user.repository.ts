@@ -1,14 +1,34 @@
 import { User } from "@/lib/db/models";
+import {
+  buildEqualityFilter,
+  buildSearchFilter,
+  buildSort,
+  getSkip,
+} from "@/lib/utils/query";
+import type { UserListQueryInput } from "@/lib/validators/user.validator";
+
+const USER_SORT_MAP = {
+  newest: { createdAt: -1 as const },
+  oldest: { createdAt: 1 as const },
+  name_asc: { name: 1 as const },
+  name_desc: { name: -1 as const },
+};
 
 export class UserRepository {
-  findAll(page = 1, limit = 20, search?: string) {
-    const filter = search
-      ? { $or: [{ name: new RegExp(search, "i") }, { email: new RegExp(search, "i") }] }
-      : {};
+  findAll(query: UserListQueryInput) {
+    const filter = {
+      ...buildEqualityFilter({
+        role: query.role,
+        isActive: query.isActive,
+      }),
+      ...buildSearchFilter(query.search, ["name", "email"]),
+    };
 
-    const skip = (page - 1) * limit;
+    const sort = buildSort(query.sort, USER_SORT_MAP);
+    const skip = getSkip(query.page, query.limit);
+
     return Promise.all([
-      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      User.find(filter).sort(sort).skip(skip).limit(query.limit).lean(),
       User.countDocuments(filter),
     ]);
   }

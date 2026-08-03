@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationSchema } from "@/lib/utils/query";
 
 export const productSchema = z.object({
   name: z.string().min(2).max(200),
@@ -35,14 +36,18 @@ export const productSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const productQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(12),
-  search: z.string().optional(),
-  category: z.string().optional(),
-  featured: z.coerce.boolean().optional(),
-  sort: z.enum(["price_asc", "price_desc", "newest", "rating"]).optional(),
-});
+export const productSortSchema = z
+  .enum(["price_asc", "price_desc", "newest", "rating"])
+  .optional();
+
+export const productQuerySchema = paginationSchema
+  .extend({
+    limit: z.coerce.number().int().min(1).max(100).default(12),
+    search: z.string().max(100).optional(),
+    category: z.string().max(100).optional(),
+    featured: z.coerce.boolean().optional(),
+    sort: productSortSchema,
+  });
 
 export const productIdSchema = z.object({
   id: z.string().min(1),
