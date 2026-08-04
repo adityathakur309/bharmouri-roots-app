@@ -7,7 +7,9 @@ import { FloatingSocialButtons } from "@/components/layout/floating-social";
 
 export function SiteChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideShopChrome = pathname.startsWith("/admin");
+  // Admin + account dashboards use their own sticky shell (sidebar/header).
+  const hideShopChrome =
+    pathname.startsWith("/admin") || pathname.startsWith("/dashboard");
 
   return (
     <>

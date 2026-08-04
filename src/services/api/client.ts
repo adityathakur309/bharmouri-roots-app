@@ -28,7 +28,13 @@ export function getStoredToken(): string | null {
 export function setAuthCookie(token: string) {
   if (typeof document === "undefined") return;
   const maxAge = 7 * 24 * 60 * 60;
-  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  // Mirror for middleware when HttpOnly cookie is unavailable; production login
+  // also sets an HttpOnly cookie via Set-Cookie from the API.
+  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
 }
 
 export function clearAuthCookie() {

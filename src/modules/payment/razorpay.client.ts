@@ -1,7 +1,12 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { AppError } from "@/lib/utils/errors";
-import { isMockPaymentMode, mockPaymentClient } from "./mock-payment.client";
+import {
+  assertLivePaymentSignatureAllowed,
+  assertPaymentGatewayReady,
+  isMockPaymentMode,
+  mockPaymentClient,
+} from "./mock-payment.client";
 
 let razorpayInstance: Razorpay | null = null;
 
@@ -32,6 +37,7 @@ export class RazorpayClient {
   }
 
   async createOrder(amountInPaise: number, receipt: string, notes?: Record<string, string>) {
+    assertPaymentGatewayReady();
     if (this.isMockMode()) {
       return mockPaymentClient.createOrder(amountInPaise, receipt);
     }
@@ -49,6 +55,7 @@ export class RazorpayClient {
     razorpayPaymentId: string,
     razorpaySignature: string
   ): boolean {
+    assertLivePaymentSignatureAllowed(razorpaySignature);
     if (this.isMockMode()) {
       return mockPaymentClient.verifySignature(
         razorpayOrderId,

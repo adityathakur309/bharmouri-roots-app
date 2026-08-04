@@ -27,6 +27,8 @@ export interface ShippingInfo {
   shiprocketOrderId?: string;
   shiprocketShipmentId?: string;
   estimatedDelivery?: string;
+  shipmentStatus?: string;
+  shippingProvider?: string;
 }
 
 export interface PaymentInfo {

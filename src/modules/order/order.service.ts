@@ -66,7 +66,10 @@ function buildShipmentTimeline(d: Record<string, unknown>): ShipmentTimelineEven
     });
   }
 
-  if (d.shiprocketOrderId || d.trackingId) {
+  if (d.shiprocketOrderId || d.trackingId || d.shiprocketShipmentId) {
+    const est = d.estimatedDelivery
+      ? ` · Est. ${String(d.estimatedDelivery)} days`
+      : "";
     events.push({
       status: "shipment_created",
       label: "Shipment Created",
@@ -76,8 +79,8 @@ function buildShipmentTimeline(d: Record<string, unknown>): ShipmentTimelineEven
           ? new Date(d.confirmedAt as string).toISOString()
           : undefined,
       description: d.trackingId
-        ? `Tracking ID: ${d.trackingId}`
-        : "Shipment booked with courier.",
+        ? `Tracking ID: ${d.trackingId}${est}`
+        : `Shipment booked with courier.${est}`,
     });
   }
 
@@ -141,6 +144,10 @@ function mapOrder(doc: Record<string, unknown> | object) {
     awbCode: d.awbCode,
     trackingId: d.trackingId,
     shiprocketOrderId: d.shiprocketOrderId,
+    shiprocketShipmentId: d.shiprocketShipmentId,
+    estimatedDelivery: d.estimatedDelivery,
+    shipmentStatus: d.shipmentStatus,
+    shippingProvider: d.shippingProvider,
     adminNotes: d.adminNotes,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
@@ -421,15 +428,18 @@ export class OrderService {
 
     if (!order) throw new NotFoundError("Order not found");
 
-    let courierTrack: unknown[] = [];
+    let courierTrack: Array<{
+      status: string;
+      activity: string;
+      location?: string;
+      date?: string;
+    }> = [];
     if (order.shiprocketShipmentId) {
       try {
         const track = await shippingService.trackShipment(
           order.shiprocketShipmentId
         );
-        courierTrack =
-          (track as { tracking_data?: { shipment_track?: unknown[] } })
-            ?.tracking_data?.shipment_track ?? [];
+        courierTrack = track.events ?? [];
       } catch {
         courierTrack = [];
       }
@@ -523,7 +533,7 @@ export class OrderService {
       throw new ConflictError("Shipment already created for this order");
     }
 
-    const booking = await shippingService.createShipmentForOrder(order as never);
+    const booking = await shippingService.createShipmentForOrder(order);
 
     const updated = await orderRepository.update(orderId, {
       shiprocketOrderId: booking.shiprocketOrderId,
@@ -531,11 +541,20 @@ export class OrderService {
       awbCode: booking.awbCode,
       trackingId: booking.trackingId ?? booking.awbCode,
       courierName: booking.courierName,
+      estimatedDelivery: booking.estimatedDelivery,
+      shipmentStatus: booking.shipmentStatus,
+      shippingProvider: booking.provider,
+      ...(typeof booking.shippingCharge === "number" &&
+      booking.shippingCharge > 0 &&
+      (!order.shippingCharge || order.shippingCharge === 0)
+        ? { shippingCharge: booking.shippingCharge }
+        : {}),
       status: "processing",
     });
 
     logger.info("Shipment created", {
       orderId,
+      provider: booking.provider,
       shiprocketShipmentId: booking.shiprocketShipmentId,
       awb: booking.awbCode,
     });

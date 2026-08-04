@@ -2,18 +2,22 @@
  * Professional idempotent database seeder.
  * Run: npm run seed
  *
- * Safe to run multiple times — uses unique keys (slug/email/setting key) + upsert / insert-if-missing.
+ * Seeds: categories, settings, admin, curated products, demo reviewers, reviews.
+ * Does NOT seed carts, orders, wishlists, or addresses.
  */
 import { loadEnvFiles } from "./load-env";
 
 loadEnvFiles();
 
 import mongoose from "mongoose";
-import { Category, Setting, User, Product } from "@/lib/db/models";
+import { Category, Setting, User, Product, Review } from "@/lib/db/models";
 import { seedAdmin } from "./seeders/seed-admin";
 import { seedCategories } from "./seeders/seed-categories";
 import { seedProducts } from "./seeders/seed-products";
 import { seedSettings } from "./seeders/seed-settings";
+import { seedDemoUsers } from "./seeders/seed-demo-users";
+import { seedReviews } from "./seeders/seed-reviews";
+import { SEED_PRODUCTS } from "./seeders/data/products.data";
 
 function log(section: string, message: string) {
   console.log(`[seed:${section}] ${message}`);
@@ -24,11 +28,18 @@ async function verify() {
   const subcategories = await Category.countDocuments({ parent: { $ne: null } });
   const settings = await Setting.countDocuments();
   const admins = await User.countDocuments({ role: "admin", isActive: true });
-  const products = await Product.countDocuments();
+  const demoUsers = await User.countDocuments({
+    email: { $regex: /\.demo@bharmouriroots\.com$/i },
+  });
+  const activeProducts = await Product.countDocuments({ isActive: true });
+  const seedProductsActive = await Product.countDocuments({
+    slug: { $in: SEED_PRODUCTS.map((p) => p.slug) },
+    isActive: true,
+  });
+  const reviews = await Review.countDocuments({ isActive: true });
   const rolesSetting = await Setting.findOne({ key: "rbac.roles" }).lean();
   const permissionsSetting = await Setting.findOne({ key: "rbac.permissions" }).lean();
 
-  // Sanity: every subcategory has a valid parent Category
   const orphans = await Category.aggregate([
     { $match: { parent: { $ne: null } } },
     {
@@ -50,7 +61,10 @@ async function verify() {
   console.log(`Orphan subcategories : ${orphanCount}`);
   console.log(`Settings             : ${settings}`);
   console.log(`Active admins        : ${admins}`);
-  console.log(`Products             : ${products}`);
+  console.log(`Demo reviewer users  : ${demoUsers}`);
+  console.log(`Active products      : ${activeProducts}`);
+  console.log(`Curated seed products: ${seedProductsActive}/${SEED_PRODUCTS.length}`);
+  console.log(`Active reviews       : ${reviews}`);
   console.log(`Roles catalog        : ${rolesSetting ? "yes" : "MISSING"}`);
   console.log(`Permissions catalog  : ${permissionsSetting ? "yes" : "MISSING"}`);
   console.log("=======================================\n");
@@ -63,6 +77,17 @@ async function verify() {
   }
   if (!rolesSetting || !permissionsSetting) {
     throw new Error("Verification failed: RBAC role/permission settings missing");
+  }
+  if (admins < 1) {
+    throw new Error(
+      "Verification failed: no admin user. Set ADMIN_EMAIL and ADMIN_PASSWORD in .env"
+    );
+  }
+  if (seedProductsActive < SEED_PRODUCTS.length) {
+    throw new Error("Verification failed: curated seed products missing");
+  }
+  if (reviews < 1) {
+    throw new Error("Verification failed: expected seeded reviews");
   }
 }
 
@@ -78,11 +103,11 @@ async function seed() {
   console.log("[seed] Connected");
 
   try {
-    // Sequential atomic upserts (safe on Atlas when collections are created mid-seed).
-    // Multi-doc transactions are avoided here because creating new collections inside
-    // a transaction can fail with "namespace already in use" on first run.
     const cats = await seedCategories();
-    log("categories", `Upserted ${cats.categoriesUpserted} categories, ${cats.subcategoriesUpserted} subcategories`);
+    log(
+      "categories",
+      `Upserted ${cats.categoriesUpserted} categories, ${cats.subcategoriesUpserted} subcategories`
+    );
 
     const settings = await seedSettings();
     log(
@@ -92,9 +117,24 @@ async function seed() {
 
     const admin = await seedAdmin();
     log("admin", `Status: ${admin.status}${admin.email ? ` (${admin.email})` : ""}`);
+    if (admin.status === "skipped_missing_env") {
+      throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD are required for seeding");
+    }
+
+    const demoUsers = await seedDemoUsers();
+    log("demo-users", `Created ${demoUsers.created}, already existed ${demoUsers.existing}`);
 
     const productResult = await seedProducts();
-    log("products", `Upserted ${productResult.upserted} product(s) by slug`);
+    log(
+      "products",
+      `Upserted ${productResult.upserted} curated product(s); deactivated ${productResult.deactivatedLegacy} legacy seed item(s)`
+    );
+
+    const reviewResult = await seedReviews();
+    log(
+      "reviews",
+      `Created ${reviewResult.created}, existing ${reviewResult.existing}; synced ${reviewResult.productsSynced} product rating(s)`
+    );
 
     await verify();
     console.log("[seed] Completed successfully (idempotent — safe to re-run).");

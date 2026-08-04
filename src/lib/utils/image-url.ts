@@ -1,6 +1,7 @@
 /**
- * Product images should be stored as site-relative paths (/api/media/..., /uploads/...).
- * If a full URL was saved during local dev (localhost), strip to pathname so production works.
+ * Product images are usually site-relative (/uploads/..., /api/media/...).
+ * Absolute localhost URLs are reduced to pathname for portability.
+ * External CDN / placeholder URLs (e.g. picsum) are kept intact.
  */
 export function normalizeProductImageUrl(url: string): string {
   if (!url || typeof url !== "string") return url;
@@ -10,8 +11,19 @@ export function normalizeProductImageUrl(url: string): string {
 
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
-      const { pathname } = new URL(trimmed);
-      return pathname || trimmed;
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname.toLowerCase();
+      const isLocalDevHost =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host === "0.0.0.0" ||
+        host.endsWith(".local");
+
+      if (isLocalDevHost) {
+        return parsed.pathname || trimmed;
+      }
+
+      return trimmed;
     } catch {
       return trimmed;
     }

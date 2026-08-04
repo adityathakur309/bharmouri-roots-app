@@ -49,6 +49,12 @@ export interface IOrder extends Document {
   trackingId?: string;
   shiprocketOrderId?: string;
   shiprocketShipmentId?: string;
+  /** Estimated delivery window from courier quote, e.g. "5-7" */
+  estimatedDelivery?: string;
+  /** Provider shipment status label, e.g. shipment_created */
+  shipmentStatus?: string;
+  /** Which booking provider wrote shipment fields (mock | shiprocket) */
+  shippingProvider?: string;
   adminNotes?: string;
   paidAt?: Date;
   confirmedAt?: Date;
@@ -127,6 +133,9 @@ const orderSchema = new Schema<IOrder>(
     trackingId: String,
     shiprocketOrderId: String,
     shiprocketShipmentId: String,
+    estimatedDelivery: String,
+    shipmentStatus: String,
+    shippingProvider: String,
     adminNotes: String,
     paidAt: Date,
     confirmedAt: Date,

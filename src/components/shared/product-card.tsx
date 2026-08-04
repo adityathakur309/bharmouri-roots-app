@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Heart, ShoppingCart, Star, Eye } from "lucide-react";
@@ -19,6 +20,7 @@ import { normalizeProductImageUrl } from "@/lib/utils/image-url";
 interface ProductCardProps {
   product: Product;
   className?: string;
+  priority?: boolean;
 }
 
 const badgeConfig: Record<string, { label: string; variant: "default" | "saffron" | "green" | "gold" }> = {
@@ -31,7 +33,7 @@ const badgeConfig: Record<string, { label: string; variant: "default" | "saffron
   traditional: { label: "Traditional", variant: "green" },
 };
 
-export function ProductCard({ product, className }: ProductCardProps) {
+export function ProductCard({ product, className, priority = false }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const { addItem } = useCart();
   const { toggleItem } = useWishlist();
@@ -69,11 +71,14 @@ export function ProductCard({ product, className }: ProductCardProps) {
           {/* Fixed aspect image — consistent card height on all breakpoints */}
           <div className="relative aspect-square w-full overflow-hidden bg-[hsl(var(--muted))] shrink-0">
             {!imgError ? (
-              <img
-                src={imageSrc}
+              <Image
+                src={imageSrc || "/og/default.png"}
                 alt={product.name}
-                className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
-                loading="lazy"
+                fill
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                className="object-cover group-hover:scale-105 transition-transform duration-500"
+                loading={priority ? undefined : "lazy"}
+                priority={priority}
                 onError={() => setImgError(true)}
               />
             ) : (

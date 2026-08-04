@@ -1,16 +1,18 @@
 import type { ClientSession } from "mongoose";
 import { Product } from "@/lib/db/models";
-import { products } from "@/lib/mock-data";
+import { LEGACY_SEED_PRODUCT_SLUGS, SEED_PRODUCTS } from "./data/products.data";
 
 export interface ProductSeedResult {
   upserted: number;
+  deactivatedLegacy: number;
 }
 
-/** Upsert catalog products by unique slug (idempotent; never deletes). */
+/** Upsert the curated seed catalog by slug (idempotent; never deletes). */
 export async function seedProducts(session?: ClientSession): Promise<ProductSeedResult> {
   let upserted = 0;
+  const keepSlugs = SEED_PRODUCTS.map((p) => p.slug);
 
-  for (const p of products) {
+  for (const p of SEED_PRODUCTS) {
     await Product.findOneAndUpdate(
       { slug: p.slug },
       {
@@ -22,8 +24,6 @@ export async function seedProducts(session?: ClientSession): Promise<ProductSeed
           price: p.price,
           originalPrice: p.originalPrice,
           discount: p.discount,
-          rating: p.rating,
-          reviews: p.reviews,
           stock: p.stock,
           images: p.images,
           description: p.description,
@@ -33,9 +33,13 @@ export async function seedProducts(session?: ClientSession): Promise<ProductSeed
           origin: p.origin,
           badge: p.badge,
           isFeatured: p.isFeatured ?? false,
-          isNewProduct: p.isNew ?? false,
+          isNewProduct: p.isNewProduct ?? false,
           isBestseller: p.isBestseller ?? false,
           isActive: true,
+        },
+        $setOnInsert: {
+          rating: 0,
+          reviews: 0,
         },
       },
       { upsert: true, returnDocument: "after", ...(session ? { session } : {}) }
@@ -43,5 +47,16 @@ export async function seedProducts(session?: ClientSession): Promise<ProductSeed
     upserted += 1;
   }
 
-  return { upserted };
+  // Soft-retire older seed items removed from the curated list (admin can hard-delete later)
+  const legacyToDisable = LEGACY_SEED_PRODUCT_SLUGS.filter((slug) => !keepSlugs.includes(slug));
+  const deactivateResult = await Product.updateMany(
+    { slug: { $in: legacyToDisable }, isActive: true },
+    { $set: { isActive: false } },
+    session ? { session } : undefined
+  );
+
+  return {
+    upserted,
+    deactivatedLegacy: deactivateResult.modifiedCount ?? 0,
+  };
 }

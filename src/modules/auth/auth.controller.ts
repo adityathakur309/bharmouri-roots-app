@@ -9,23 +9,29 @@ import {
 import { parseJsonBody, type AuthenticatedRequest } from "@/lib/middleware/with-handler";
 import { NextRequest } from "next/server";
 import { authService } from "./auth.service";
+import {
+  appendAuthCookie,
+  clearAuthCookieResponse,
+} from "@/lib/auth/cookie";
 
 export class AuthController {
   async register(request: NextRequest) {
     const body = await parseJsonBody(request);
     const input = registerSchema.parse(body);
     const result = await authService.register(input);
-    return successResponse(result, {
+    const res = successResponse(result, {
       message: "Registration successful",
       status: 201,
     });
+    return appendAuthCookie(res, result.accessToken);
   }
 
   async login(request: NextRequest) {
     const body = await parseJsonBody(request);
     const input = loginSchema.parse(body);
     const result = await authService.login(input);
-    return successResponse(result, { message: "Login successful" });
+    const res = successResponse(result, { message: "Login successful" });
+    return appendAuthCookie(res, result.accessToken);
   }
 
   async getProfile(request: AuthenticatedRequest) {
@@ -54,9 +60,10 @@ export class AuthController {
     return successResponse(result, { message: result.message });
   }
 
-  /** Client clears JWT; endpoint exists for consistent logout UX / logging. */
+  /** Clears HttpOnly auth cookie; client also clears local token storage. */
   async logout() {
-    return successResponse({ ok: true }, { message: "Logged out" });
+    const res = successResponse({ ok: true }, { message: "Logged out" });
+    return clearAuthCookieResponse(res);
   }
 }
 

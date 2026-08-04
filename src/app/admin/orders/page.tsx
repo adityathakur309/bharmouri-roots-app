@@ -6,7 +6,8 @@ import { orderStatusConfig, orderStatusImpact } from "@/lib/order-status";
 import { getAllowedOrderTransitions, canCreateShipment } from "@/lib/utils/order-transitions";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Truck, Package, ShoppingBag, ChevronDown, Loader2 } from "lucide-react";
+import { Search, Truck, Package, ShoppingBag, ChevronDown, Loader2, Eye } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -233,7 +234,7 @@ export default function AdminOrdersPage() {
       return {
         title: `Create shipment for ${pending.order.id}?`,
         description:
-          "This books the order with the courier (Shiprocket or demo shipping). The order will move to Processing and tracking/AWB may be assigned. Prepaid orders must already be paid; COD orders can ship after confirmation.",
+          "This books the order with the courier. The order will move to Processing and tracking/AWB will be assigned. Prepaid orders must already be paid; COD orders can ship after confirmation.",
       };
     }
     const from = orderStatusConfig[pending.order.status]?.label ?? pending.order.status;
@@ -354,21 +355,34 @@ export default function AdminOrdersPage() {
                           />
                         </td>
                         <td className="p-3 sm:p-4">
-                          <Button
-                            size="sm"
-                            variant={canShip ? "outline" : "ghost"}
-                            className="gap-1.5 h-9 px-2.5"
-                            disabled={!canShip}
-                            onClick={() => setPending({ type: "shipment", order })}
-                            title={
-                              canShip
-                                ? "Create courier shipment"
-                                : "Confirm the order first, then create shipment"
-                            }
-                          >
-                            <Truck className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline text-xs">Ship</span>
-                          </Button>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1.5 h-9 px-2.5"
+                              asChild
+                            >
+                              <Link href={`/admin/orders/${order.dbId}`} title="View order details">
+                                <Eye className="w-3.5 h-3.5" />
+                                <span className="hidden lg:inline text-xs">View</span>
+                              </Link>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={canShip ? "outline" : "ghost"}
+                              className="gap-1.5 h-9 px-2.5"
+                              disabled={!canShip}
+                              onClick={() => setPending({ type: "shipment", order })}
+                              title={
+                                canShip
+                                  ? "Create courier shipment"
+                                  : "Confirm the order first, then create shipment"
+                              }
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline text-xs">Ship</span>
+                            </Button>
+                          </div>
                         </td>
                       </motion.tr>
                     );
