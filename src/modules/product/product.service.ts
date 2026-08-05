@@ -87,7 +87,11 @@ export class ProductService {
     const existing = await productRepository.findBySlug(data.slug);
     if (existing) throw new ConflictError("Product slug already exists");
 
-    const product = await productRepository.create(data);
+    // New admin products start as draft until published
+    const product = await productRepository.create({
+      ...data,
+      isActive: data.isActive ?? false,
+    });
     return mapProduct(product.toObject());
   }
 
@@ -102,6 +106,11 @@ export class ProductService {
     const product = await productRepository.delete(id);
     if (!product) throw new NotFoundError("Product not found");
     return mapProduct(product);
+  }
+
+  async removeAll() {
+    const result = await productRepository.deactivateAllActive();
+    return { deactivated: result.modifiedCount ?? 0 };
   }
 }
 

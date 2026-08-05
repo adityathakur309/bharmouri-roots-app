@@ -185,7 +185,10 @@ export function ProductFormDialog({
         toast({ title: "Product updated" });
       } else {
         await productApi.create(payload);
-        toast({ title: "Product created" });
+        toast({
+          title: "Product created as draft",
+          description: "Use Publish on the product row to show it on the storefront.",
+        });
       }
       onSaved();
       onOpenChange(false);

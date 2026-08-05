@@ -48,7 +48,7 @@ const productSchema = new Schema<IProduct>(
     isFeatured: { type: Boolean, default: false },
     isNewProduct: { type: Boolean, default: false },
     isBestseller: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true },
+    isActive: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

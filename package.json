@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "npx tsx src/scripts/seed.ts",
+    "generate:seo-assets": "npx tsx src/scripts/generate-seo-assets.ts",
     "test:mongo": "npx tsx src/scripts/test-mongo.ts"
   },
   "dependencies": {
@@ -61,6 +62,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "png-to-ico": "^3.0.2",
     "tailwindcss": "^4",
     "tsx": "^4.22.0",
     "typescript": "^5"

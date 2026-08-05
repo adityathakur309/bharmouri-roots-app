@@ -5,6 +5,8 @@ import { orderApi } from "@/services/api";
 import { orderStatusConfig, orderStatusImpact } from "@/lib/order-status";
 import { getAllowedOrderTransitions, canCreateShipment } from "@/lib/utils/order-transitions";
 import { useToast } from "@/hooks/use-toast";
+import { useListViewMode } from "@/hooks/use-list-view-mode";
+import { ViewModeToggle } from "@/components/shared/view-mode-toggle";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Truck, Package, ShoppingBag, ChevronDown, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
@@ -158,6 +160,7 @@ export default function AdminOrdersPage() {
   const [loadError, setLoadError] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState(false);
+  const { viewMode, setViewMode } = useListViewMode();
   const { toast } = useToast();
 
   const loadOrders = useCallback(async () => {
@@ -248,11 +251,43 @@ export default function AdminOrdersPage() {
     };
   })();
 
+  const orderRowActions = (order: AdminOrderRow, { showLabels = false }: { showLabels?: boolean } = {}) => {
+    const canShip = canCreateShipment(order.status as OrderStatus);
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="ghost" className="gap-1.5 h-9 px-2.5" asChild>
+          <Link href={`/admin/orders/${order.dbId}`} title="View order details">
+            <Eye className="w-3.5 h-3.5" />
+            <span className={cn("text-xs", showLabels ? "inline" : "hidden lg:inline")}>View</span>
+          </Link>
+        </Button>
+        <Button
+          size="sm"
+          variant={canShip ? "outline" : "ghost"}
+          className="gap-1.5 h-9 px-2.5"
+          disabled={!canShip}
+          onClick={() => setPending({ type: "shipment", order })}
+          title={
+            canShip
+              ? "Create courier shipment"
+              : "Confirm the order first, then create shipment"
+          }
+        >
+          <Truck className="w-3.5 h-3.5" />
+          <span className={cn("text-xs", showLabels ? "inline" : "hidden sm:inline")}>Ship</span>
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Orders</h1>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">{allOrders.length} total orders</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Orders</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">{allOrders.length} total orders</p>
+        </div>
+        <ViewModeToggle value={viewMode} onChange={setViewMode} />
       </div>
 
       {loadError ? (
@@ -301,25 +336,24 @@ export default function AdminOrdersPage() {
             </div>
           </div>
 
-          <div className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-[hsl(var(--muted))]/30 border-b">
-                  <tr>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Order ID</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Customer</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden md:table-cell">Date</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden lg:table-cell">Items</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Total</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden sm:table-cell">Payment</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Status</th>
-                    <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[hsl(var(--border))]">
-                  {filtered.map((order, i) => {
-                    const canShip = canCreateShipment(order.status as OrderStatus);
-                    return (
+          {viewMode === "list" ? (
+            <div className="bg-[hsl(var(--card))] rounded-2xl border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[hsl(var(--muted))]/30 border-b">
+                    <tr>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Order ID</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Customer</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden md:table-cell">Date</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden lg:table-cell">Items</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Total</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap hidden sm:table-cell">Payment</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Status</th>
+                      <th className="text-left p-3 sm:p-4 font-semibold text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))] whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[hsl(var(--border))]">
+                    {filtered.map((order, i) => (
                       <motion.tr
                         key={order.dbId}
                         initial={{ opacity: 0 }}
@@ -354,54 +388,79 @@ export default function AdminOrdersPage() {
                             }
                           />
                         </td>
-                        <td className="p-3 sm:p-4">
-                          <div className="flex items-center gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="gap-1.5 h-9 px-2.5"
-                              asChild
-                            >
-                              <Link href={`/admin/orders/${order.dbId}`} title="View order details">
-                                <Eye className="w-3.5 h-3.5" />
-                                <span className="hidden lg:inline text-xs">View</span>
-                              </Link>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={canShip ? "outline" : "ghost"}
-                              className="gap-1.5 h-9 px-2.5"
-                              disabled={!canShip}
-                              onClick={() => setPending({ type: "shipment", order })}
-                              title={
-                                canShip
-                                  ? "Create courier shipment"
-                                  : "Confirm the order first, then create shipment"
-                              }
-                            >
-                              <Truck className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline text-xs">Ship</span>
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="p-3 sm:p-4">{orderRowActions(order)}</td>
                       </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {filtered.length === 0 && (
-              <div className="text-center py-12 text-[hsl(var(--muted-foreground))]">
-                <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                No orders found
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-            <div className="p-4 border-t flex items-center justify-between text-sm">
-              <p className="text-[hsl(var(--muted-foreground))]">
+              {filtered.length === 0 && (
+                <div className="text-center py-12 text-[hsl(var(--muted-foreground))]">
+                  <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  No orders found
+                </div>
+              )}
+              <div className="p-4 border-t flex items-center justify-between text-sm">
+                <p className="text-[hsl(var(--muted-foreground))]">
+                  Showing {filtered.length} of {allOrders.length} orders
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filtered.map((order, i) => (
+                  <motion.div
+                    key={order.dbId}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                    className="bg-[hsl(var(--card))] rounded-2xl border p-4 flex flex-col gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-semibold">{order.id}</p>
+                        <p className="font-medium truncate mt-1">{order.customer}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                          {order.email}
+                        </p>
+                      </div>
+                      <p className="font-bold text-[hsl(var(--primary))] whitespace-nowrap shrink-0">
+                        {formatPrice(order.total)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
+                      <span>{formatDate(order.date)}</span>
+                      <span>·</span>
+                      <span>{order.items} item{order.items === 1 ? "" : "s"}</span>
+                      <span>·</span>
+                      <span className="px-2 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]">
+                        {order.payment}
+                      </span>
+                    </div>
+                    <StatusBadgeMenu
+                      order={order}
+                      onPick={(nextStatus) =>
+                        setPending({ type: "status", order, nextStatus })
+                      }
+                    />
+                    <div className="mt-auto pt-2 border-t flex items-center justify-end">
+                      {orderRowActions(order, { showLabels: true })}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              {filtered.length === 0 && (
+                <div className="text-center py-12 text-[hsl(var(--muted-foreground))] bg-[hsl(var(--card))] rounded-2xl border">
+                  <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  No orders found
+                </div>
+              )}
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
                 Showing {filtered.length} of {allOrders.length} orders
               </p>
-            </div>
-          </div>
+            </>
+          )}
         </>
       )}
 

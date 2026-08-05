@@ -76,6 +76,14 @@ export class ProductRepository {
   delete(id: string) {
     return Product.findByIdAndUpdate(id, { isActive: false }, { new: true }).lean();
   }
+
+  /** Soft-deactivate every active product (admin Delete All). */
+  deactivateAllActive() {
+    return Product.updateMany(
+      { isActive: true },
+      { $set: { isActive: false } }
+    );
+  }
 }
 
 export const productRepository = new ProductRepository();

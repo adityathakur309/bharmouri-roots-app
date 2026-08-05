@@ -40,4 +40,7 @@ export const productApi = {
     apiRequest<Product>("patch", `/admin/products/${id}`, data),
 
   remove: (id: string) => apiRequest<Product>("delete", `/admin/products/${id}`),
+
+  removeAll: () =>
+    apiRequest<{ deactivated: number }>("delete", "/admin/products"),
 };

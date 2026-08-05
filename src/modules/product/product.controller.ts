@@ -50,6 +50,13 @@ export class ProductController {
     const product = await productService.remove(id);
     return successResponse(product, { message: "Product deactivated" });
   }
+
+  async removeAll(_request: AuthenticatedRequest) {
+    const result = await productService.removeAll();
+    return successResponse(result, {
+      message: `${result.deactivated} product(s) deactivated`,
+    });
+  }
 }
 
 export const productController = new ProductController();

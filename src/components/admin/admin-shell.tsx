@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Package, ShoppingCart, Users, Settings,
+  LayoutDashboard, Package, ShoppingCart, Users, Settings, FolderTree,
   Menu, X, Leaf, ChevronRight, Bell, Search, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const adminLinks = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Products", href: "/admin/products", icon: Package },
+  { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Settings", href: "/admin/settings", icon: Settings },
