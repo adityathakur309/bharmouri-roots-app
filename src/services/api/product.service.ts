@@ -25,7 +25,7 @@ export const productApi = {
     const formData = new FormData();
     formData.append("file", file, file.name);
     return apiClient.post<{ success: true; data: { url: string } }>(
-      "/admin/upload",
+      "/admin/upload?purpose=product",
       formData
     );
   },

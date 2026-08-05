@@ -70,9 +70,14 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // FormData must not use application/json — axios would send { file: {} } and uploads fail
-  if (config.data instanceof FormData) {
-    config.headers.delete("Content-Type");
+  // FormData must not use application/json — browser must set multipart boundary
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (typeof config.headers.set === "function") {
+      config.headers.set("Content-Type", false as unknown as string);
+    } else {
+      delete (config.headers as Record<string, unknown>)["Content-Type"];
+      delete (config.headers as Record<string, unknown>)["content-type"];
+    }
   }
 
   return config;

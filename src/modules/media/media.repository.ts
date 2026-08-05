@@ -5,11 +5,17 @@ export class MediaRepository {
     filename: string;
     mimeType: string;
     size: number;
-    path: string;
-    url: string;
+    path?: string;
+    url?: string;
+    /** Used on serverless (Vercel) where disk writes are not persistent */
+    data?: Buffer;
     purpose?: MediaPurpose;
   }) {
     return Media.create(data);
+  }
+
+  updateUrl(id: string, url: string) {
+    return Media.findByIdAndUpdate(id, { url }, { new: true });
   }
 
   findById(id: string) {

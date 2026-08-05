@@ -13,7 +13,7 @@ import { useWishlistStore } from "@/stores/wishlist-store";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/utils";
-import type { Product } from "@/lib/mock-data";
+import type { Product } from "@/types/product";
 import { cn } from "@/lib/utils";
 import { normalizeProductImageUrl } from "@/lib/utils/image-url";
 
@@ -33,6 +33,17 @@ const badgeConfig: Record<string, { label: string; variant: "default" | "saffron
   traditional: { label: "Traditional", variant: "green" },
 };
 
+function categoryEmoji(slug: string) {
+  if (slug === "organic-dals") return "🌾";
+  if (slug === "dry-fruits") return "🥜";
+  if (slug === "honey") return "🍯";
+  if (slug === "apples") return "🍎";
+  if (slug === "shawls") return "🧣";
+  if (slug === "topi") return "🧢";
+  if (slug === "pattu") return "🧵";
+  return "🌿";
+}
+
 export function ProductCard({ product, className, priority = false }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const { addItem } = useCart();
@@ -44,12 +55,14 @@ export function ProductCard({ product, className, priority = false }: ProductCar
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     await addItem(product);
     toast({ title: "Added to cart!", description: product.name });
   };
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     toggleItem(product);
     toast({
       title: wishlisted ? "Removed from wishlist" : "Added to wishlist!",
@@ -64,12 +77,12 @@ export function ProductCard({ product, className, priority = false }: ProductCar
     <motion.div
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
-      className={cn("group relative h-full", className)}
+      className={cn("group relative h-full max-sm:transform-none", className)}
     >
       <Link href={`/products/${product.slug}`} className="block h-full">
-        <div className="flex h-full flex-col rounded-2xl overflow-hidden bg-[hsl(var(--card))] border shadow-sm hover:shadow-xl transition-shadow duration-300">
-          {/* Fixed aspect image — consistent card height on all breakpoints */}
-          <div className="relative aspect-square w-full overflow-hidden bg-[hsl(var(--muted))] shrink-0">
+        <div className="flex h-full flex-col overflow-hidden rounded-xl sm:rounded-2xl bg-[hsl(var(--card))] border shadow-sm hover:shadow-xl transition-shadow duration-300">
+          {/* Shorter image on mobile; square from sm+ */}
+          <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-[hsl(var(--muted))] shrink-0">
             {!imgError ? (
               <Image
                 src={imageSrc || "/og/default.png"}
@@ -82,22 +95,17 @@ export function ProductCard({ product, className, priority = false }: ProductCar
                 onError={() => setImgError(true)}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-5xl">
-                {product.categorySlug === "organic-dals" ? "🌾" :
-                 product.categorySlug === "dry-fruits" ? "🥜" :
-                 product.categorySlug === "honey" ? "🍯" :
-                 product.categorySlug === "apples" ? "🍎" :
-                 product.categorySlug === "shawls" ? "🧣" :
-                 product.categorySlug === "topi" ? "🧢" :
-                 product.categorySlug === "pattu" ? "🧵" : "🌿"}
+              <div className="absolute inset-0 flex items-center justify-center text-4xl sm:text-5xl">
+                {categoryEmoji(product.categorySlug)}
               </div>
             )}
 
             {showShopActions && (
               <button
+                type="button"
                 onClick={handleWishlist}
                 className={cn(
-                  "absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-md transition-all z-10",
+                  "absolute top-1.5 right-1.5 sm:top-2 sm:right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-md transition-all z-10",
                   "sm:opacity-0 sm:scale-90 sm:group-hover:opacity-100 sm:group-hover:scale-100",
                   wishlisted
                     ? "bg-red-500 text-white"
@@ -112,6 +120,7 @@ export function ProductCard({ product, className, priority = false }: ProductCar
             {showShopActions && (
               <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden sm:flex items-center justify-center gap-2">
                 <motion.button
+                  type="button"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={handleWishlist}
@@ -123,6 +132,7 @@ export function ProductCard({ product, className, priority = false }: ProductCar
                   <Heart className={cn("w-4 h-4", wishlisted && "fill-current")} />
                 </motion.button>
                 <motion.button
+                  type="button"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={handleAddToCart}
@@ -139,37 +149,34 @@ export function ProductCard({ product, className, priority = false }: ProductCar
               </div>
             )}
 
-            <div className="absolute top-2 left-2 flex flex-col gap-1">
+            <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex flex-col gap-1">
               {product.isNew && (
-                <Badge variant="green" className="text-[10px] py-0.5">New</Badge>
+                <Badge variant="green" className="text-[9px] sm:text-[10px] py-0 px-1.5 sm:py-0.5">New</Badge>
               )}
-              {product.discount && (
-                <Badge variant="saffron" className="text-[10px] py-0.5">-{product.discount}%</Badge>
-              )}
-              {badge && (
-                <Badge variant={badge.variant} className="text-[10px] py-0.5">{badge.label}</Badge>
-              )}
+              {product.discount ? (
+                <Badge variant="saffron" className="text-[9px] sm:text-[10px] py-0 px-1.5 sm:py-0.5">
+                  -{product.discount}%
+                </Badge>
+              ) : null}
+              {badge ? (
+                <Badge variant={badge.variant} className="hidden sm:inline-flex text-[10px] py-0.5">
+                  {badge.label}
+                </Badge>
+              ) : null}
             </div>
-
-            {product.stock <= 10 && (
-              <div className="absolute bottom-2 left-2 right-2">
-                <div className="bg-red-500/90 backdrop-blur-sm text-white text-[10px] rounded-lg px-2 py-1 text-center font-medium">
-                  Only {product.stock} left!
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="flex flex-1 flex-col p-4">
-            <p className="text-xs text-[hsl(var(--muted-foreground))] font-medium mb-1 uppercase tracking-wide">
+          <div className="flex flex-1 flex-col p-2.5 sm:p-4">
+            <p className="hidden sm:block text-xs text-[hsl(var(--muted-foreground))] font-medium mb-1 uppercase tracking-wide">
               {product.category}
             </p>
-            <h3 className="font-semibold text-sm leading-snug line-clamp-2 mb-2 min-h-[2.5rem] group-hover:text-[hsl(var(--primary))] transition-colors">
+            <h3 className="font-semibold text-xs sm:text-sm leading-snug line-clamp-2 mb-1 sm:mb-2 group-hover:text-[hsl(var(--primary))] transition-colors">
               {product.name}
             </h3>
 
-            <div className="flex items-center gap-1.5 mb-3">
-              <div className="flex items-center">
+            {/* Compact rating on mobile; full stars from sm+ */}
+            <div className="flex items-center gap-1 mb-1.5 sm:mb-3">
+              <div className="hidden sm:flex items-center">
                 {[...Array(5)].map((_, i) => (
                   <Star
                     key={i}
@@ -182,39 +189,46 @@ export function ProductCard({ product, className, priority = false }: ProductCar
                   />
                 ))}
               </div>
-              <span className="text-xs text-[hsl(var(--muted-foreground))]">
-                {product.rating} ({product.reviews})
+              <Star className="sm:hidden w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+              <span className="text-[11px] sm:text-xs text-[hsl(var(--muted-foreground))]">
+                {product.rating}
+                <span className="hidden sm:inline"> ({product.reviews})</span>
               </span>
             </div>
 
-            <div className="flex items-center justify-between mt-auto">
-              <div className="flex items-baseline gap-2">
-                <span className="text-base font-bold text-[hsl(var(--primary))]">
+            <div className="flex items-center justify-between gap-1 mt-auto">
+              <div className="flex items-baseline gap-1 sm:gap-2 min-w-0">
+                <span className="text-sm sm:text-base font-bold text-[hsl(var(--primary))] truncate">
                   {formatPrice(product.price)}
                 </span>
-                {product.originalPrice && (
-                  <span className="text-xs text-[hsl(var(--muted-foreground))] line-through">
+                {product.originalPrice ? (
+                  <span className="text-[10px] sm:text-xs text-[hsl(var(--muted-foreground))] line-through shrink-0">
                     {formatPrice(product.originalPrice)}
                   </span>
-                )}
+                ) : null}
               </div>
-              {product.weight && (
-                <span className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] px-2 py-0.5 rounded-full shrink-0">
+              {product.weight ? (
+                <span className="hidden sm:inline-flex text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] px-2 py-0.5 rounded-full shrink-0">
                   {product.weight}
                 </span>
-              )}
+              ) : null}
             </div>
 
-            {showShopActions && (
+            {/* Mobile: View product → full detail (reviews included). Desktop: Add to cart */}
+            <span className="sm:hidden mt-2 inline-flex w-full items-center justify-center rounded-md bg-[hsl(var(--primary))] px-2 py-1.5 text-[11px] font-semibold text-white">
+              View product
+            </span>
+
+            {showShopActions ? (
               <Button
                 size="sm"
-                className="w-full mt-3"
+                className="w-full mt-3 hidden sm:inline-flex"
                 onClick={handleAddToCart}
               >
                 <ShoppingCart className="w-3.5 h-3.5" />
                 Add to Cart
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </Link>

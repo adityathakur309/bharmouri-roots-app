@@ -7,6 +7,20 @@ export const registerSchema = z.object({
   phone: z.string().optional(),
 });
 
+/** Step 1 — send signed complete-registration link */
+export const startRegistrationSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+});
+
+/** Step 2 — finish signup after email link click */
+export const completeRegistrationSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+  token: z.string().min(20).max(2000),
+  name: z.string().min(2).max(100),
+  password: z.string().min(8).max(128),
+  phone: z.string().optional(),
+});
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -28,6 +42,8 @@ export const resetPasswordSchema = z.object({
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type StartRegistrationInput = z.infer<typeof startRegistrationSchema>;
+export type CompleteRegistrationInput = z.infer<typeof completeRegistrationSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useMemo, Suspense, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useMemo, Suspense, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, SlidersHorizontal, X, ChevronDown, Star, Grid3X3, List, Leaf } from "lucide-react";
 import { ProductCard } from "@/components/shared/product-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { categories } from "@/lib/mock-data";
-import { productApi } from "@/services/api";
+import { categories as mockFallbackCategories } from "@/lib/mock-data";
+import { categoryApi, productApi } from "@/services/api";
 import type { Product } from "@/types/product";
+import type { Category } from "@/types/category";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ const priceRanges = [
 ];
 
 function ProductsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") ?? "";
 
@@ -44,6 +46,43 @@ function ProductsContent() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    setSelectedCategory(searchParams.get("category") ?? "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    categoryApi
+      .list()
+      .then((res) => setCategories(res.data ?? []))
+      .catch(() =>
+        setCategories(
+          mockFallbackCategories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            icon: c.icon,
+            image: c.image,
+            sortOrder: 0,
+            productCount: c.count,
+          }))
+        )
+      );
+  }, []);
+
+  const applyCategory = useCallback(
+    (slug: string) => {
+      setSelectedCategory(slug);
+      const params = new URLSearchParams(searchParams.toString());
+      if (slug) params.set("category", slug);
+      else params.delete("category");
+      const qs = params.toString();
+      router.replace(qs ? `/products?${qs}` : "/products", { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   useEffect(() => {
     const sortMap: Record<string, string | undefined> = {
@@ -102,7 +141,7 @@ function ProductsContent() {
   const activeFiltersCount = [selectedCategory, selectedPriceRange !== null, minRating > 0].filter(Boolean).length;
 
   const clearFilters = () => {
-    setSelectedCategory("");
+    applyCategory("");
     setSelectedPriceRange(null);
     setMinRating(0);
     setSearch("");
@@ -115,20 +154,19 @@ function ProductsContent() {
         <h3 className="font-semibold text-sm uppercase tracking-wider mb-3 text-[hsl(var(--muted-foreground))]">Categories</h3>
         <div className="space-y-1">
           <button
-            onClick={() => setSelectedCategory("")}
+            onClick={() => applyCategory("")}
             className={cn("w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left", !selectedCategory ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-medium" : "hover:bg-[hsl(var(--muted))]")}
           >
             <span>All Products</span>
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">{catalog.length}</span>
           </button>
           {categories.map((cat) => (
             <button
               key={cat.slug}
-              onClick={() => setSelectedCategory(selectedCategory === cat.slug ? "" : cat.slug)}
+              onClick={() => applyCategory(selectedCategory === cat.slug ? "" : cat.slug)}
               className={cn("w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left", selectedCategory === cat.slug ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-medium" : "hover:bg-[hsl(var(--muted))]")}
             >
-              <span className="flex items-center gap-2"><span>{cat.icon}</span>{cat.name}</span>
-              <span className="text-xs text-[hsl(var(--muted-foreground))]">{cat.count}</span>
+              <span className="flex items-center gap-2"><span>{cat.icon || "🏔️"}</span>{cat.name}</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">{cat.productCount}</span>
             </button>
           ))}
         </div>
@@ -289,7 +327,7 @@ function ProductsContent() {
             {selectedCategory && (
               <Badge variant="secondary" className="gap-1 pr-1">
                 {categories.find((c) => c.slug === selectedCategory)?.name}
-                <button onClick={() => setSelectedCategory("")} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
+                <button onClick={() => applyCategory("")} className="ml-1 hover:text-red-500"><X className="w-3 h-3" /></button>
               </Badge>
             )}
             {selectedPriceRange !== null && (
@@ -369,9 +407,9 @@ function ProductsContent() {
               <motion.div
                 layout
                 className={cn(
-                  "grid gap-5",
+                  "grid gap-3 sm:gap-5",
                   viewMode === "grid"
-                    ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+                    ? "grid-cols-2 xl:grid-cols-3"
                     : "grid-cols-1"
                 )}
               >

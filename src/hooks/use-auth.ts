@@ -71,6 +71,33 @@ export function useAuth() {
     [setSession]
   );
 
+  const completeSignup = useCallback(
+    async (input: {
+      name: string;
+      email: string;
+      password: string;
+      token: string;
+      phone?: string;
+    }) => {
+      try {
+        const data = await authApi.completeRegistration(input);
+        setSession(data.user);
+        return {
+          success: true as const,
+          user: data.user,
+          redirectTo: resolvePostLoginPath(data.user.role),
+        };
+      } catch (err: unknown) {
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: string }).message)
+            : "Could not complete registration";
+        return { success: false as const, error: message };
+      }
+    },
+    [setSession]
+  );
+
   const logout = useCallback(() => {
     void (async () => {
       await authApi.logout();
@@ -95,6 +122,7 @@ export function useAuth() {
     isLoading: !hydrated,
     login,
     signup,
+    completeSignup,
     logout,
     updateProfile,
     getDashboardPath: () =>

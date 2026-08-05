@@ -10,7 +10,9 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Admin image upload — optimize in memory, store file on disk, save path in MongoDB.
+ * Admin image upload — optimize in memory, then store:
+ * - Disk (`public/uploads`) on local/VPS
+ * - MongoDB binary + `/api/media/:id` on Vercel (read-only filesystem)
  * Query `?purpose=product|category|banner|profile|general` (default general).
  */
 export const POST = withHandler(

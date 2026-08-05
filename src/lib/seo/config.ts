@@ -5,19 +5,31 @@
 export const SITE_NAME = "BharmouriRoots";
 export const SITE_TAGLINE = "Pure Himachali Organic & Handcrafted Products";
 export const SITE_DEFAULT_DESCRIPTION =
-  "Shop authentic organic dals, honey, dry fruits, Himachali shawls, topi, and traditional handmade products from Bharmour, Himachal Pradesh. Free shipping on orders above ₹999.";
+  "BharmouriRoots — buy authentic Chamba rajma, Bharmouri topi, Gaddi topi, Kullu shawls, dry fruits, organic dals, and Himalayan honey from Bharmour, Himachal Pradesh. Free shipping on orders above ₹999.";
 
 export const SITE_KEYWORDS = [
+  "BharmouriRoots",
+  "Bharmouri",
+  "Bharmour",
+  "Bharmouri organic store",
+  "Bharmour nuts",
+  "Chamba rajma",
+  "rajma",
+  "Himachali rajma",
+  "Bharmouri topi",
+  "Gaddi topi",
+  "Himachali topi",
+  "Kullu shawl",
+  "Kullu shawls",
+  "Himachali shawl",
+  "shawls",
   "Himachali products",
   "organic dal",
   "Himalayan honey",
-  "Himachali shawl",
-  "Bharmour",
-  "organic farming India",
-  "dry fruits Himachal",
-  "Kullu shawl",
   "mountain honey",
-  "BharmouriRoots",
+  "dry fruits Himachal",
+  "organic farming India",
+  "Himachal Pradesh organic products",
 ] as const;
 
 /** Canonical production domain (no trailing slash). */

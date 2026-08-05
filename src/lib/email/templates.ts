@@ -76,3 +76,31 @@ export function welcomeEmailTemplate(params: {
   const text = `Welcome ${params.name}! Shop at ${params.shopUrl}`;
   return { subject, html, text };
 }
+
+export function completeRegistrationEmailTemplate(params: {
+  email: string;
+  completeUrl: string;
+  expiresMinutes: number;
+}): { subject: string; html: string; text: string } {
+  const subject = `Complete your ${brand.name} registration`;
+  const html = layout(
+    subject,
+    `
+    <h1 style="margin:0 0 12px;font-size:22px;color:${brand.color};">Welcome to ${brand.name}!</h1>
+    <p style="margin:0 0 16px;line-height:1.55;font-size:15px;">Namaste,</p>
+    <p style="margin:0 0 20px;line-height:1.55;font-size:15px;">
+      Thanks for starting your registration with us. Please click the button below to complete your account setup
+      for <strong>${params.email}</strong>. This link expires in <strong>${params.expiresMinutes} minutes</strong>.
+    </p>
+    <p style="margin:0 0 24px;">
+      <a href="${params.completeUrl}" style="display:inline-block;background:${brand.accent};color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:14px;">
+        Complete Registration
+      </a>
+    </p>
+    <p style="margin:0;font-size:12px;color:#7a7060;line-height:1.5;word-break:break-all;">
+      Or paste this link into your browser:<br/>${params.completeUrl}
+    </p>`
+  );
+  const text = `Namaste,\n\nComplete your ${brand.name} registration for ${params.email} (expires in ${params.expiresMinutes} minutes):\n${params.completeUrl}\n\nIf you didn't request this, ignore this email.`;
+  return { subject, html, text };
+}

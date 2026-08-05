@@ -12,11 +12,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { categories } from "@/lib/mock-data";
+import { categories as mockFallbackCategories } from "@/lib/mock-data";
 import { DEFAULT_PRODUCT_IMAGE } from "@/lib/product-images";
-import { productApi } from "@/services/api";
+import { categoryApi, productApi } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
+import type { Category } from "@/types/category";
 
 function slugify(text: string) {
   return text
@@ -26,11 +27,22 @@ function slugify(text: string) {
     .replace(/^-|-$/g, "");
 }
 
+const fallbackCategories: Category[] = mockFallbackCategories.map((c) => ({
+  id: c.id,
+  name: c.name,
+  slug: c.slug,
+  description: c.description,
+  icon: c.icon,
+  image: c.image,
+  sortOrder: 0,
+  productCount: c.count,
+}));
+
 const emptyForm = {
   name: "",
   slug: "",
-  category: categories[0]?.name ?? "Organic Dals",
-  categorySlug: categories[0]?.slug ?? "organic-dals",
+  category: fallbackCategories[0]?.name ?? "Organic Dals",
+  categorySlug: fallbackCategories[0]?.slug ?? "organic-dals",
   price: "",
   originalPrice: "",
   stock: "",
@@ -61,8 +73,21 @@ export function ProductFormDialog({
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [categories, setCategories] = useState<Category[]>(fallbackCategories);
 
   const isEdit = Boolean(product?.id);
+
+  useEffect(() => {
+    if (!open) return;
+    categoryApi
+      .list()
+      .then((res) => {
+        if (res.data?.length) setCategories(res.data);
+      })
+      .catch(() => {
+        /* keep fallback */
+      });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,9 +109,14 @@ export function ProductFormDialog({
         isNew: product.isNew ?? false,
         isBestseller: product.isBestseller ?? false,
       });
-    } else {
-      setForm(emptyForm);
+      return;
     }
+    setForm({
+      ...emptyForm,
+      category: categories[0]?.name ?? emptyForm.category,
+      categorySlug: categories[0]?.slug ?? emptyForm.categorySlug,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset form when dialog opens / product changes
   }, [open, product]);
 
   const handleCategoryChange = (categorySlug: string) => {

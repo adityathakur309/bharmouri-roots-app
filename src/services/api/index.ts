@@ -1,6 +1,7 @@
 export { apiClient, apiRequest, getStoredToken, setStoredToken } from "./client";
 export { authApi } from "./auth.service";
 export { productApi } from "./product.service";
+export { categoryApi } from "./category.service";
 export { cartApi } from "./cart.service";
 export { orderApi } from "./order.service";
 export { wishlistApi } from "./wishlist.service";

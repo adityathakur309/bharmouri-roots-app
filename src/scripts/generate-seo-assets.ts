@@ -2,12 +2,30 @@ import fs from "fs";
 import path from "path";
 import sharp from "sharp";
 
-async function makeIcon(size: number, file: string, label: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-  <rect width="100%" height="100%" fill="#2d6a4f"/>
-  <text x="50%" y="54%" fill="white" font-size="${Math.floor(size * 0.42)}" font-family="Arial,sans-serif" font-weight="700" text-anchor="middle" dominant-baseline="middle">${label}</text>
-</svg>`;
-  await sharp(Buffer.from(svg)).png().toFile(file);
+/**
+ * Regenerates favicons / PWA icons / default OG from the brand source image.
+ * Prefer: public/brand-favicon.png  (or public/favicon (2).png)
+ */
+async function resolveSource(): Promise<string> {
+  const candidates = [
+    "public/brand-favicon.png",
+    "public/favicon (2).png",
+    "public/favicon.png",
+  ];
+  for (const file of candidates) {
+    if (fs.existsSync(file)) return file;
+  }
+  throw new Error(
+    "No brand favicon source found. Add public/brand-favicon.png and re-run."
+  );
+}
+
+async function resizePng(src: string, size: number, out: string) {
+  await sharp(src)
+    .ensureAlpha()
+    .resize(size, size, { fit: "cover" })
+    .png()
+    .toFile(out);
 }
 
 async function makeOg() {
@@ -27,13 +45,42 @@ async function makeOg() {
 }
 
 async function main() {
+  const src = await resolveSource();
   fs.mkdirSync("public/icons", { recursive: true });
   fs.mkdirSync("public/og", { recursive: true });
-  await makeIcon(192, "public/icons/icon-192.png", "B");
-  await makeIcon(512, "public/icons/icon-512.png", "BR");
-  await makeIcon(180, "public/apple-touch-icon.png", "BR");
+  fs.mkdirSync("src/app", { recursive: true });
+
+  if (src !== "public/brand-favicon.png") {
+    await sharp(src).ensureAlpha().png().toFile("public/brand-favicon.png");
+  }
+
+  await resizePng(src, 16, "public/favicon-16.png");
+  await resizePng(src, 32, "public/favicon-32.png");
+  await resizePng(src, 48, "public/favicon-48.png");
+  await resizePng(src, 32, "src/app/icon.png");
+  await resizePng(src, 180, "src/app/apple-icon.png");
+  await resizePng(src, 180, "public/apple-touch-icon.png");
+  await resizePng(src, 192, "public/icons/icon-192.png");
+  await resizePng(src, 512, "public/icons/icon-512.png");
+  await resizePng(src, 48, "public/favicon.png");
+
+  try {
+    const { default: pngToIco } = await import("png-to-ico");
+    const ico = await pngToIco([
+      "public/favicon-16.png",
+      "public/favicon-32.png",
+      "public/favicon-48.png",
+    ]);
+    fs.writeFileSync("public/favicon.ico", ico);
+    fs.writeFileSync("src/app/favicon.ico", ico);
+  } catch {
+    console.warn(
+      "png-to-ico unavailable — PNG favicons still generated. Run: npm i -D png-to-ico"
+    );
+  }
+
   await makeOg();
-  console.log("Generated icons in", path.resolve("public"));
+  console.log("Generated SEO assets from", path.resolve(src));
 }
 
 main().catch((err) => {

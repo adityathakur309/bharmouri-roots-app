@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProductCard } from "@/components/shared/product-card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { categories, testimonials, heroSlides } from "@/lib/mock-data";
+import { categories as mockFallbackCategories, testimonials, heroSlides } from "@/lib/mock-data";
 import { ParentBrandSection } from "@/components/home/parent-brand-section";
 import { HeroParentBrandStrip } from "@/components/home/hero-parent-brand-strip";
-import { productApi } from "@/services/api";
+import { categoryApi, productApi } from "@/services/api";
 import type { Product } from "@/types/product";
+import type { Category } from "@/types/category";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 40 },
@@ -59,6 +60,8 @@ export default function HomePage() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
   useEffect(() => {
     productApi
@@ -66,6 +69,25 @@ export default function HomePage() {
       .then((res) => setCatalog(res.data ?? []))
       .catch(() => setCatalog([]))
       .finally(() => setProductsLoaded(true));
+
+    categoryApi
+      .list()
+      .then((res) => setCategories(res.data ?? []))
+      .catch(() =>
+        setCategories(
+          mockFallbackCategories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            icon: c.icon,
+            image: c.image,
+            sortOrder: 0,
+            productCount: c.count,
+          }))
+        )
+      )
+      .finally(() => setCategoriesLoaded(true));
   }, []);
 
   const featuredProducts = (
@@ -178,26 +200,43 @@ export default function HomePage() {
       <section className="py-12 sm:py-20">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Browse by Category" title="Explore Our Collections" subtitle="From mountain farms to skilled artisans — discover the finest of Himachal Pradesh" />
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {categories.map((cat) => (
-              <motion.div key={cat.id} variants={fadeUp}>
-                <Link href={`/products?category=${cat.slug}`}>
-                  <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">
-                    <img src={cat.image} alt={cat.name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
-                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
-                    <div className="absolute bottom-0 left-0 right-0 p-4">
-                      <span className="text-2xl mb-1 block">{cat.icon}</span>
-                      <h3 className="text-white font-bold text-sm leading-tight">{cat.name}</h3>
-                      <p className="text-white/70 text-xs">{cat.count} products</p>
-                    </div>
-                    <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <ArrowRight className="w-3 h-3 text-white" />
-                    </div>
-                  </motion.div>
-                </Link>
-              </motion.div>
-            ))}
-          </motion.div>
+          {!categoriesLoaded ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="aspect-[4/3] rounded-2xl bg-[hsl(var(--muted))] animate-pulse" />
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <EmptyState
+              compact
+              title="Categories coming soon"
+              description="We are preparing our Himachali collections."
+              primaryAction={{ label: "Browse Products", href: "/products" }}
+            />
+          ) : (
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {categories.map((cat) => (
+                <motion.div key={cat.id || cat.slug} variants={fadeUp}>
+                  <Link href={`/products?category=${cat.slug}`}>
+                    <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">
+                      <img src={cat.image || "/og/default.png"} alt={cat.name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
+                      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <span className="text-2xl mb-1 block">{cat.icon || "🏔️"}</span>
+                        <h3 className="text-white font-bold text-sm leading-tight">{cat.name}</h3>
+                        <p className="text-white/70 text-xs">
+                          {cat.productCount} {cat.productCount === 1 ? "product" : "products"}
+                        </p>
+                      </div>
+                      <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ArrowRight className="w-3 h-3 text-white" />
+                      </div>
+                    </motion.div>
+                  </Link>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
         </div>
       </section>
 
@@ -213,7 +252,7 @@ export default function HomePage() {
               primaryAction={{ label: "Browse Products", href: "/products" }}
             />
           ) : (
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
               {featuredProducts.map((product) => (
                 <motion.div key={product.id} variants={fadeUp} className="h-full">
                   <ProductCard product={product} className="h-full" />
@@ -280,7 +319,7 @@ export default function HomePage() {
               primaryAction={{ label: "Browse Products", href: "/products" }}
             />
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
               {bestsellerProducts.map((product, i) => (
                 <motion.div key={product.id} className="h-full" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
                   <ProductCard product={product} className="h-full" />

@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
 import { useAuth } from "@/hooks/use-auth";
+import { categoryApi } from "@/services/api";
 import { cn } from "@/lib/utils";
+import type { Category } from "@/types/category";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -22,7 +24,7 @@ const navLinks = [
   { label: "Contact", href: "/contact" },
 ];
 
-const shopCategories = [
+const fallbackShopCategories = [
   { label: "Organic Dals", href: "/products?category=organic-dals", icon: "🌾" },
   { label: "Dry Fruits", href: "/products?category=dry-fruits", icon: "🥜" },
   { label: "Fresh Apples", href: "/products?category=apples", icon: "🍎" },
@@ -40,6 +42,7 @@ export function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [shopCategories, setShopCategories] = useState(fallbackShopCategories);
 
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -49,6 +52,25 @@ export function Navbar() {
   const showShopActions = !isAdmin;
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    categoryApi
+      .list()
+      .then((res) => {
+        const list = res.data ?? [];
+        if (!list.length) return;
+        setShopCategories(
+          list.map((c: Category) => ({
+            label: c.name,
+            href: `/products?category=${c.slug}`,
+            icon: c.icon || "🏔️",
+          }))
+        );
+      })
+      .catch(() => {
+        /* keep fallbackShopCategories */
+      });
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);

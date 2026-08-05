@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };
 
 /**
- * Backward-compatible media URL for older product images stored as /api/media/:id.
- * New uploads use static /uploads/... paths (served directly by Next.js).
+ * Media URL for product images.
+ * - Disk uploads: redirects to static `/uploads/...` when the file exists
+ * - Vercel / legacy: serves binary from MongoDB at `/api/media/:id`
  */
 export async function GET(request: Request, context: RouteContext) {
   const ip = getClientIp(request);

@@ -15,6 +15,26 @@ export interface AuthResponse {
 }
 
 export const authApi = {
+  /** Step 1 — send verify / complete-registration email */
+  startRegistration: (email: string) =>
+    apiRequest<{ message: string; email: string }>("post", "/auth/register/start", {
+      email,
+    }),
+
+  /** Step 2 — create account after email link */
+  completeRegistration: async (data: {
+    name: string;
+    email: string;
+    password: string;
+    token: string;
+    phone?: string;
+  }) => {
+    const res = await apiRequest<AuthResponse>("post", "/auth/register/complete", data);
+    setStoredToken(res.data.accessToken);
+    return res.data;
+  },
+
+  /** Legacy direct register (prefer completeRegistration) */
   register: async (data: { name: string; email: string; password: string; phone?: string }) => {
     const res = await apiRequest<AuthResponse>("post", "/auth/register", data);
     setStoredToken(res.data.accessToken);

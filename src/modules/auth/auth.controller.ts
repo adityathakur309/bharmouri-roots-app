@@ -1,6 +1,8 @@
 import { successResponse } from "@/lib/utils/api-response";
 import {
   registerSchema,
+  startRegistrationSchema,
+  completeRegistrationSchema,
   loginSchema,
   updateProfileSchema,
   forgotPasswordSchema,
@@ -15,6 +17,27 @@ import {
 } from "@/lib/auth/cookie";
 
 export class AuthController {
+  /** Step 1: email only — send complete-registration link */
+  async startRegistration(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = startRegistrationSchema.parse(body);
+    const result = await authService.startRegistration(input);
+    return successResponse(result, { message: result.message });
+  }
+
+  /** Step 2: name + password after email verification link */
+  async completeRegistration(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = completeRegistrationSchema.parse(body);
+    const result = await authService.completeRegistration(input);
+    const res = successResponse(result, {
+      message: "Registration successful",
+      status: 201,
+    });
+    return appendAuthCookie(res, result.accessToken);
+  }
+
+  /** Legacy direct register — still supported for tooling; prefer complete flow */
   async register(request: NextRequest) {
     const body = await parseJsonBody(request);
     const input = registerSchema.parse(body);

@@ -9,6 +9,12 @@ export const metadata = buildPageMetadata({
   path: "/products",
   keywords: [
     "shop Himachali products",
+    "BharmouriRoots",
+    "Chamba rajma",
+    "Bharmouri topi",
+    "Gaddi topi",
+    "Kullu shawls",
+    "Bharmour nuts",
     "organic dals online",
     "Himalayan honey",
     "Himachali shawls",

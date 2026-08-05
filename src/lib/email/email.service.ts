@@ -33,11 +33,31 @@ function resolveProvider(): EmailProvider {
 }
 
 function getFromAddress(): string {
-  return (
-    process.env.EMAIL_FROM?.trim() ||
+  const raw =
+    process.env.EMAIL_FROM?.trim().replace(/^["']|["']$/g, "") ||
     process.env.SMTP_USER?.trim() ||
-    "noreply@bharmouriroots.in"
-  );
+    "noreply@bharmouriroots.in";
+  return raw;
+}
+
+/**
+ * Gmail authenticates as SMTP_USER. Sending "From" a different Gmail account
+ * often fails or is rewritten — use SMTP_USER while keeping a friendly name.
+ */
+function resolveSmtpFrom(user: string): string {
+  const from = getFromAddress();
+  const host = (process.env.SMTP_HOST || "").toLowerCase();
+  const isGmail = host.includes("gmail.com") || host.includes("google.com");
+  if (!isGmail) return from;
+
+  const match = from.match(/^(.*)<([^>]+)>$/);
+  const displayName = match?.[1]?.trim().replace(/^["']|["']$/g, "");
+  const fromEmail = (match?.[2] || from).trim().toLowerCase();
+  const smtpEmail = user.trim().toLowerCase();
+
+  if (fromEmail === smtpEmail) return from;
+  if (displayName) return `"${displayName}" <${smtpEmail}>`;
+  return smtpEmail;
 }
 
 function stripHtml(html: string): string {
@@ -45,10 +65,11 @@ function stripHtml(html: string): string {
 }
 
 async function sendViaSmtp(input: SendEmailInput): Promise<SendEmailResult> {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST?.trim();
   const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const user = process.env.SMTP_USER?.trim();
+  // Gmail app passwords are often pasted with spaces — strip them
+  const pass = process.env.SMTP_PASS?.replace(/\s+/g, "").trim();
 
   if (!host || !user || !pass) {
     return {
@@ -66,7 +87,7 @@ async function sendViaSmtp(input: SendEmailInput): Promise<SendEmailResult> {
   });
 
   const info = await transporter.sendMail({
-    from: getFromAddress(),
+    from: resolveSmtpFrom(user),
     to: Array.isArray(input.to) ? input.to.join(", ") : input.to,
     subject: input.subject,
     html: input.html,

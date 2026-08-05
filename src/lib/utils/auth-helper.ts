@@ -1,6 +1,11 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { JWT_ALGORITHM, JWT_EXPIRES_IN } from "@/lib/constants/jwt";
+import {
+  JWT_ALGORITHM,
+  JWT_EXPIRES_IN,
+  REGISTRATION_TOKEN_EXPIRES_IN,
+  REGISTRATION_TOKEN_PURPOSE,
+} from "@/lib/constants/jwt";
 import type { SessionUser } from "@/types/auth";
 
 const SALT_ROUNDS = 12;
@@ -57,6 +62,55 @@ export function verifyAccessToken(token: string): SessionUser | null {
       role: payload.role,
       name: payload.name,
     };
+  } catch {
+    return null;
+  }
+}
+
+/** Signed one-hour token proving ownership of an email for registration. */
+export function signRegistrationToken(email: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not defined");
+
+  return jwt.sign(
+    {
+      purpose: REGISTRATION_TOKEN_PURPOSE,
+      email: email.toLowerCase().trim(),
+    },
+    secret,
+    {
+      expiresIn: REGISTRATION_TOKEN_EXPIRES_IN,
+      algorithm: JWT_ALGORITHM,
+    }
+  );
+}
+
+/** Returns verified email or null if token invalid/expired/mismatched. */
+export function verifyRegistrationToken(
+  token: string,
+  expectedEmail?: string
+): string | null {
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+
+    const payload = jwt.verify(token, secret, {
+      algorithms: [JWT_ALGORITHM],
+    }) as {
+      purpose?: string;
+      email?: string;
+    };
+
+    if (payload.purpose !== REGISTRATION_TOKEN_PURPOSE || !payload.email) {
+      return null;
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    if (expectedEmail && email !== expectedEmail.toLowerCase().trim()) {
+      return null;
+    }
+
+    return email;
   } catch {
     return null;
   }

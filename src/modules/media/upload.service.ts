@@ -102,6 +102,11 @@ function claimedMime(file: File | undefined, detected: DetectedImage): void {
   }
 }
 
+function createSharpPipeline(buffer: Buffer) {
+  // failOn none + regenerate help with screenshots / odd colour profiles
+  return sharp(buffer, { failOn: "none", sequentialRead: true }).rotate();
+}
+
 async function optimizeImage(
   buffer: Buffer,
   detected: DetectedImage,
@@ -118,16 +123,15 @@ async function optimizeImage(
     };
   }
 
-  let pipeline = sharp(buffer, { failOn: "none" }).rotate();
-
-  const meta = await pipeline.metadata();
+  // Read metadata from a separate instance — reusing a pipeline after
+  // metadata() can fail on some PNGs ("colourspace: parameter space not set").
+  const meta = await createSharpPipeline(buffer).metadata();
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;
 
-  if (
-    width > options.maxWidth ||
-    height > options.maxHeight
-  ) {
+  let pipeline = createSharpPipeline(buffer);
+
+  if (width > options.maxWidth || height > options.maxHeight) {
     pipeline = pipeline.resize({
       width: options.maxWidth,
       height: options.maxHeight,
@@ -150,11 +154,18 @@ async function optimizeImage(
   return { buffer: out, mimeType: "image/jpeg", extension: "jpg" };
 }
 
+/** Vercel (and similar) cannot persist files under public/uploads. */
+function prefersMongoStorage(): boolean {
+  if (process.env.UPLOAD_STORAGE === "mongodb") return true;
+  if (process.env.UPLOAD_STORAGE === "disk") return false;
+  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+}
+
 /**
- * Disk-backed image upload pipeline (production-friendly for VPS/local):
- * validate → optimize in memory → write to public/uploads → store path/url in MongoDB.
+ * Image upload pipeline:
+ * validate → optimize in memory → store on disk (local/VPS) or MongoDB (Vercel).
  *
- * Returns a static URL (/uploads/...) so Next.js can serve files directly (fast).
+ * Returns `/uploads/...` on disk, or `/api/media/:id` on serverless.
  */
 export async function uploadImage(
   input: File | Buffer | ArrayBuffer,
@@ -206,38 +217,65 @@ export async function uploadImage(
   }
 
   const filename = `${randomUUID()}.${optimized.extension}`;
+  const useMongo = prefersMongoStorage();
 
-  let stored: { relativePath: string; publicUrl: string };
-  try {
-    stored = await writeUploadFile(purpose, filename, optimized.buffer);
-  } catch (error) {
-    logger.error("Failed to write upload to disk", {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    throw new ValidationError("Could not store uploaded image");
+  let relativePath: string | undefined;
+  let publicUrl: string | undefined;
+
+  if (!useMongo) {
+    try {
+      const stored = await writeUploadFile(purpose, filename, optimized.buffer);
+      relativePath = stored.relativePath;
+      publicUrl = stored.publicUrl;
+    } catch (error) {
+      // Local/VPS should succeed; if disk is unavailable (e.g. misconfigured host),
+      // fall back to MongoDB so admin product creation still works.
+      logger.warn("Disk write failed — falling back to MongoDB binary storage", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
+
+  const storeInMongo = !relativePath;
 
   const media = await mediaRepository.create({
     filename,
     mimeType: optimized.mimeType,
     size: optimized.buffer.length,
-    path: stored.relativePath,
-    url: stored.publicUrl,
     purpose,
+    ...(storeInMongo
+      ? { data: optimized.buffer }
+      : { path: relativePath, url: publicUrl }),
   });
 
   const id = media._id.toString();
-  logger.info("Image uploaded to disk", {
-    id,
-    purpose,
-    path: stored.relativePath,
-    mimeType: optimized.mimeType,
-    size: optimized.buffer.length,
-  });
+
+  if (storeInMongo) {
+    publicUrl = `/api/media/${id}`;
+    await mediaRepository.updateUrl(id, publicUrl);
+    logger.info("Image uploaded to MongoDB (serverless-safe)", {
+      id,
+      purpose,
+      mimeType: optimized.mimeType,
+      size: optimized.buffer.length,
+    });
+  } else {
+    logger.info("Image uploaded to disk", {
+      id,
+      purpose,
+      path: relativePath,
+      mimeType: optimized.mimeType,
+      size: optimized.buffer.length,
+    });
+  }
+
+  if (!publicUrl) {
+    throw new ValidationError("Could not store uploaded image");
+  }
 
   return {
     id,
-    url: stored.publicUrl,
+    url: publicUrl,
     filename,
     mimeType: optimized.mimeType,
     size: optimized.buffer.length,
