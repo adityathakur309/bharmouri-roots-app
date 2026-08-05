@@ -39,7 +39,7 @@ function appBaseUrl(): string {
       process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") ||
-      "http://localhost:3000"
+      "https://bharmouriroots.com"
     );
   }
 }
