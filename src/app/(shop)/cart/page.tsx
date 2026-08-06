@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { useListViewMode } from "@/hooks/use-list-view-mode";
 import { ViewModeToggle } from "@/components/shared/view-mode-toggle";
+import { clearBuyNowIntent } from "@/lib/cart/buy-now";
 
 const SHIPPING_THRESHOLD = 999;
 const SHIPPING_FEE = 80;
@@ -324,7 +325,11 @@ export default function CartPage() {
                 </div>
               )}
 
-              <Link href="/checkout" className="block">
+              <Link
+                href="/checkout"
+                className="block"
+                onClick={() => clearBuyNowIntent()}
+              >
                 <Button size="lg" className="w-full gap-2 mt-2">
                   Proceed to Checkout <ArrowRight className="w-5 h-5" />
                 </Button>

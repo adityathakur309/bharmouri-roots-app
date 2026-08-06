@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -36,12 +36,14 @@ export function ProductDetailClient({ slug }: { slug: string }) {
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
 
-  const { addItem } = useCart();
+  const router = useRouter();
+  const { addItem, beginBuyNow } = useCart();
   const { toggleItem } = useWishlist();
   const wishlisted = useWishlistStore((s) => s.items.some((p) => p.id === product?.id));
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const showShopActions = !isAdmin;
+  const [buyingNow, setBuyingNow] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -85,6 +87,22 @@ export function ProductDetailClient({ slug }: { slug: string }) {
     setAddedToCart(true);
     toast({ title: "Added to cart!", description: `${quantity}x ${product.name}` });
     setTimeout(() => setAddedToCart(false), 2000);
+  };
+
+  const handleBuyNow = async () => {
+    if (buyingNow) return;
+    setBuyingNow(true);
+    try {
+      await beginBuyNow(product, quantity);
+      if (!isAuthenticated) {
+        router.push(`/login?callbackUrl=${encodeURIComponent("/checkout")}`);
+        return;
+      }
+      router.push("/checkout");
+    } catch {
+      toast({ title: "Could not start checkout", variant: "destructive" });
+      setBuyingNow(false);
+    }
   };
 
   return (
@@ -235,8 +253,14 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                     )}
                   </AnimatePresence>
                 </Button>
-                <Button size="lg" variant="saffron" className="flex-1 gap-2">
-                  Buy Now
+                <Button
+                  size="lg"
+                  variant="saffron"
+                  className="flex-1 gap-2"
+                  onClick={handleBuyNow}
+                  disabled={buyingNow || product.stock < 1}
+                >
+                  {buyingNow ? "Please wait…" : "Buy Now"}
                 </Button>
                 <Button
                   size="lg"

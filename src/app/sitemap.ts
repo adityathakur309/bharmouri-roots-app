@@ -1,49 +1,77 @@
 import type { MetadataRoute } from "next";
 import { connectDB } from "@/lib/db/connect";
 import { Category, Product } from "@/lib/db/models";
-import { absoluteUrl } from "@/lib/seo/config";
+import { CANONICAL_SITE_URL } from "@/lib/seo/config";
 
 /**
  * Serves GET /sitemap.xml (XML — not .ts).
  * Submit this URL in Google Search Console:
  *   https://bharmouriroots.com/sitemap.xml
+ *
+ * Always emits the production host so env misconfiguration
+ * (e.g. localhost) cannot break Search Console again.
  */
+export const revalidate = 3600;
+
+function sitemapUrl(path = "/"): string {
+  if (!path || path === "/") return `${CANONICAL_SITE_URL}/`;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${CANONICAL_SITE_URL}${normalized}`;
+}
+
+function toPublicImages(sources: string[]): string[] {
+  return sources
+    .filter((img): img is string => typeof img === "string" && img.length > 0)
+    .slice(0, 5)
+    .map((img) => {
+      if (!img.startsWith("http")) return sitemapUrl(img);
+      try {
+        const host = new URL(img).hostname.toLowerCase();
+        if (host === "localhost" || host === "127.0.0.1") return "";
+        return img;
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [
     {
-      url: absoluteUrl("/"),
+      url: sitemapUrl("/"),
       lastModified: now,
       changeFrequency: "daily",
       priority: 1,
     },
     {
-      url: absoluteUrl("/products"),
+      url: sitemapUrl("/products"),
       lastModified: now,
       changeFrequency: "daily",
       priority: 0.9,
     },
     {
-      url: absoluteUrl("/about"),
+      url: sitemapUrl("/about"),
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
+      url: sitemapUrl("/contact"),
       lastModified: now,
       changeFrequency: "monthly",
       priority: 0.6,
     },
     {
-      url: absoluteUrl("/contact"),
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-    {
-      url: absoluteUrl("/terms"),
+      url: sitemapUrl("/terms"),
       lastModified: now,
       changeFrequency: "yearly",
       priority: 0.3,
     },
     {
-      url: absoluteUrl("/privacy"),
+      url: sitemapUrl("/privacy"),
       lastModified: now,
       changeFrequency: "yearly",
       priority: 0.3,
@@ -57,20 +85,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     await connectDB();
 
     const [products, categories] = await Promise.all([
-      Product.find({ isActive: true }).select("slug updatedAt images").lean(),
+      Product.find({ isActive: true })
+        .select("slug updatedAt images")
+        .sort({ updatedAt: -1 })
+        .lean(),
       Category.find({ isActive: true, parent: null })
         .select("slug updatedAt image")
+        .sort({ updatedAt: -1 })
         .lean(),
     ]);
 
     productEntries = products.map((p) => {
-      const images = (p.images ?? [])
-        .filter((img): img is string => typeof img === "string" && img.length > 0)
-        .slice(0, 5)
-        .map((img) => (img.startsWith("http") ? img : absoluteUrl(img)));
+      const images = toPublicImages(p.images ?? []);
 
       return {
-        url: absoluteUrl(`/products/${p.slug}`),
+        url: sitemapUrl(`/products/${p.slug}`),
         lastModified: p.updatedAt ? new Date(p.updatedAt) : now,
         changeFrequency: "weekly" as const,
         priority: 0.8,
@@ -78,19 +107,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       };
     });
 
-    categoryEntries = categories.map((c) => ({
-      url: absoluteUrl(`/products?category=${c.slug}`),
-      lastModified: c.updatedAt ? new Date(c.updatedAt) : now,
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
-      ...(c.image
-        ? {
-            images: [
-              c.image.startsWith("http") ? c.image : absoluteUrl(c.image),
-            ],
-          }
-        : {}),
-    }));
+    categoryEntries = categories.map((c) => {
+      const images = c.image ? toPublicImages([c.image]) : [];
+
+      return {
+        url: sitemapUrl(`/products?category=${encodeURIComponent(c.slug)}`),
+        lastModified: c.updatedAt ? new Date(c.updatedAt) : now,
+        changeFrequency: "weekly" as const,
+        priority: 0.7,
+        ...(images.length ? { images } : {}),
+      };
+    });
   } catch {
     // Sitemap still returns static pages if DB is temporarily unavailable
   }

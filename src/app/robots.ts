@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
-import { getSiteUrl } from "@/lib/seo/config";
+import { CANONICAL_SITE_URL } from "@/lib/seo/config";
 
 export default function robots(): MetadataRoute.Robots {
-  const site = getSiteUrl();
+  const site = CANONICAL_SITE_URL;
   return {
     rules: [
       {
@@ -28,6 +28,6 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: `${site}/sitemap.xml`,
-    host: site.replace(/^https?:\/\//, ""),
+    host: "bharmouriroots.com",
   };
 }

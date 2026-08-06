@@ -14,7 +14,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { categories as mockFallbackCategories, testimonials, heroSlides } from "@/lib/mock-data";
 import { ParentBrandSection } from "@/components/home/parent-brand-section";
 import { HeroParentBrandStrip } from "@/components/home/hero-parent-brand-strip";
-import { categoryApi, productApi } from "@/services/api";
+import { productApi } from "@/services/api";
+import { useCategories } from "@/hooks/use-categories";
 import type { Product } from "@/types/product";
 import type { Category } from "@/types/category";
 
@@ -60,8 +61,7 @@ export default function HomePage() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const { categories, loaded: categoriesLoaded } = useCategories();
 
   useEffect(() => {
     productApi
@@ -69,26 +69,21 @@ export default function HomePage() {
       .then((res) => setCatalog(res.data ?? []))
       .catch(() => setCatalog([]))
       .finally(() => setProductsLoaded(true));
-
-    categoryApi
-      .list()
-      .then((res) => setCategories(res.data ?? []))
-      .catch(() =>
-        setCategories(
-          mockFallbackCategories.map((c) => ({
-            id: c.id,
-            name: c.name,
-            slug: c.slug,
-            description: c.description,
-            icon: c.icon,
-            image: c.image,
-            sortOrder: 0,
-            productCount: c.count,
-          }))
-        )
-      )
-      .finally(() => setCategoriesLoaded(true));
   }, []);
+
+  const displayCategories: Category[] =
+    categories.length > 0
+      ? categories
+      : mockFallbackCategories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          description: c.description,
+          icon: c.icon,
+          image: c.image,
+          sortOrder: 0,
+          productCount: c.count,
+        }));
 
   const featuredProducts = (
     catalog.filter((p) => p.isFeatured).length
@@ -206,7 +201,7 @@ export default function HomePage() {
                 <div key={i} className="aspect-[4/3] rounded-2xl bg-[hsl(var(--muted))] animate-pulse" />
               ))}
             </div>
-          ) : categories.length === 0 ? (
+          ) : displayCategories.length === 0 ? (
             <EmptyState
               compact
               title="Categories coming soon"
@@ -215,7 +210,7 @@ export default function HomePage() {
             />
           ) : (
             <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {categories.map((cat) => (
+              {displayCategories.map((cat) => (
                 <motion.div key={cat.id || cat.slug} variants={fadeUp}>
                   <Link href={`/products?category=${cat.slug}`}>
                     <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">

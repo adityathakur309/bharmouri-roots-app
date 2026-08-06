@@ -8,12 +8,11 @@ import { ProductCard } from "@/components/shared/product-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { categories as mockFallbackCategories } from "@/lib/mock-data";
-import { categoryApi, productApi } from "@/services/api";
+import { productApi } from "@/services/api";
 import type { Product } from "@/types/product";
-import type { Category } from "@/types/category";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useCategories } from "@/hooks/use-categories";
 
 const sortOptions = [
   { label: "Featured", value: "featured" },
@@ -37,6 +36,7 @@ function ProductsContent() {
   const initialCategory = searchParams.get("category") ?? "";
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [sortBy, setSortBy] = useState("featured");
   const [selectedPriceRange, setSelectedPriceRange] = useState<number | null>(null);
@@ -46,31 +46,17 @@ function ProductsContent() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const { categories } = useCategories();
 
   useEffect(() => {
     setSelectedCategory(searchParams.get("category") ?? "");
   }, [searchParams]);
 
+  // Debounce search so every keystroke does not hit GET /products
   useEffect(() => {
-    categoryApi
-      .list()
-      .then((res) => setCategories(res.data ?? []))
-      .catch(() =>
-        setCategories(
-          mockFallbackCategories.map((c) => ({
-            id: c.id,
-            name: c.name,
-            slug: c.slug,
-            description: c.description,
-            icon: c.icon,
-            image: c.image,
-            sortOrder: 0,
-            productCount: c.count,
-          }))
-        )
-      );
-  }, []);
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const applyCategory = useCallback(
     (slug: string) => {
@@ -92,32 +78,33 @@ function ProductsContent() {
       newest: "newest",
     };
     setLoading(true);
+    let cancelled = false;
     productApi
       .list({
         limit: 100,
         category: selectedCategory || undefined,
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         sort: sortMap[sortBy],
       })
       .then((res) => {
-        setCatalog(res.data ?? []);
+        if (!cancelled) setCatalog(res.data ?? []);
       })
-      .catch(() => setCatalog([]))
-      .finally(() => setLoading(false));
-  }, [selectedCategory, search, sortBy]);
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategory, debouncedSearch, sortBy]);
 
+  // API already applied category/search/(most) sort — only price + rating stay client-side;
+  // client sort remains for featured / most-reviews (not sent to the API).
   const filtered = useMemo(() => {
     let result = [...catalog];
 
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
-      );
-    }
-    if (selectedCategory) {
-      result = result.filter((p) => p.categorySlug === selectedCategory);
-    }
     if (selectedPriceRange !== null) {
       const range = priceRanges[selectedPriceRange];
       result = result.filter((p) => p.price >= range.min && p.price <= range.max);
@@ -126,17 +113,14 @@ function ProductsContent() {
       result = result.filter((p) => p.rating >= minRating);
     }
 
-    switch (sortBy) {
-      case "price-asc": result.sort((a, b) => a.price - b.price); break;
-      case "price-desc": result.sort((a, b) => b.price - a.price); break;
-      case "rating": result.sort((a, b) => b.rating - a.rating); break;
-      case "reviews": result.sort((a, b) => b.reviews - a.reviews); break;
-      case "newest": result.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0)); break;
-      default: result.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+    if (sortBy === "reviews") {
+      result.sort((a, b) => b.reviews - a.reviews);
+    } else if (sortBy === "featured") {
+      result.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     }
 
     return result;
-  }, [catalog, search, selectedCategory, sortBy, selectedPriceRange, minRating]);
+  }, [catalog, sortBy, selectedPriceRange, minRating]);
 
   const activeFiltersCount = [selectedCategory, selectedPriceRange !== null, minRating > 0].filter(Boolean).length;
 

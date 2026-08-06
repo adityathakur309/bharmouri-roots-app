@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { cartApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCartStore, type CartItem } from "@/stores/cart-store";
+import { isBuyNowActive } from "@/lib/cart/buy-now";
 import type { Product } from "@/types/product";
 
 function mapApiCartItem(item: { product: Product; quantity: number }): CartItem {
@@ -41,6 +42,11 @@ export function useCartSync() {
           couponDiscount?: number;
         };
         if (!cancelled) {
+          // Don't overwrite an in-progress Buy Now checkout with the old server cart.
+          if (isBuyNowActive()) {
+            synced.current = true;
+            return;
+          }
           setFromServer({
             items: (data.items ?? []).map(mapApiCartItem),
             couponCode: data.couponCode ?? "",

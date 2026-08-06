@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +24,7 @@ import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { orderApi, addressApi } from "@/services/api";
 import { MockPaymentDialog } from "@/components/checkout/mock-payment-dialog";
+import { isBuyNowActive } from "@/lib/cart/buy-now";
 
 const steps = ["Address", "Payment", "Review"];
 
@@ -53,8 +54,18 @@ function loadRazorpayScript(): Promise<boolean> {
 }
 
 export default function CheckoutPage() {
-  const { items, getSubtotal, getTotal, couponDiscount, clearCart, prepareCheckoutCart } = useCart();
-  const { user } = useAuth();
+  const {
+    items,
+    getSubtotal,
+    getTotal,
+    couponDiscount,
+    clearCart,
+    prepareCheckoutCart,
+    applyBuyNowIfPending,
+    abandonBuyNow,
+    completeBuyNow,
+  } = useCart();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -64,6 +75,8 @@ export default function CheckoutPage() {
   const [placedOrderId, setPlacedOrderId] = useState("");
   const [placedOrderNumber, setPlacedOrderNumber] = useState("");
   const [isPlacing, setIsPlacing] = useState(false);
+  const [buyNowReady, setBuyNowReady] = useState(() => !isBuyNowActive());
+  const orderPlacedRef = useRef(false);
   const [mockPaymentOpen, setMockPaymentOpen] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<{
     orderId: string;
@@ -94,6 +107,39 @@ export default function CheckoutPage() {
     }
   }, [user]);
 
+  // After login / cart sync, keep Buy Now as a single-product checkout cart.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isBuyNowActive()) {
+      setBuyNowReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      await applyBuyNowIfPending();
+      if (!cancelled) setBuyNowReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isAuthenticated, applyBuyNowIfPending]);
+
+  // Leaving checkout without completing restores the previous cart for Buy Now sessions.
+  // Deferred so React Strict Mode remount does not falsely treat the first unmount as abandon.
+  useEffect(() => {
+    let mounted = true;
+    return () => {
+      mounted = false;
+      queueMicrotask(() => {
+        if (!mounted && !orderPlacedRef.current && isBuyNowActive()) {
+          void abandonBuyNow();
+        }
+      });
+    };
+  }, [abandonBuyNow]);
+
   useEffect(() => {
     addressApi
       .list()
@@ -123,6 +169,12 @@ export default function CheckoutPage() {
       })
       .catch(() => {});
   }, []);
+
+  const finishSuccessfulOrder = async () => {
+    orderPlacedRef.current = true;
+    await clearCart();
+    completeBuyNow();
+  };
 
   const subtotal = getSubtotal();
   const total = getTotal();
@@ -178,7 +230,7 @@ export default function CheckoutPage() {
       setPlacedOrderNumber(pendingPayment.orderNumber);
       setOrderPlaced(true);
       setMockPaymentOpen(false);
-      await clearCart();
+      await finishSuccessfulOrder();
     } catch (err: unknown) {
       const message = err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Payment failed";
       toast({ title: message, variant: "destructive" });
@@ -224,7 +276,7 @@ export default function CheckoutPage() {
           setPlacedOrderId(paymentData.orderId);
           setPlacedOrderNumber(paymentData.orderNumber);
           setOrderPlaced(true);
-          await clearCart();
+          await finishSuccessfulOrder();
         } catch {
           toast({ title: "Payment verification failed", variant: "destructive" });
         }
@@ -282,7 +334,7 @@ export default function CheckoutPage() {
         setPlacedOrderId(order.id);
         setPlacedOrderNumber(order.orderNumber);
         setOrderPlaced(true);
-        await clearCart();
+        await finishSuccessfulOrder();
         return;
       }
 
@@ -354,6 +406,14 @@ export default function CheckoutPage() {
             </Link>
           </motion.div>
         </motion.div>
+      </motion.div>
+    );
+  }
+
+  if (!buyNowReady) {
+    return (
+      <motion.div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 px-4">
+        <p className="text-[hsl(var(--muted-foreground))]">Preparing checkout…</p>
       </motion.div>
     );
   }
