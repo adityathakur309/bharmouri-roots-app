@@ -33,13 +33,15 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function appBaseUrl(): string {
   try {
-    return getSiteUrl();
+    return "https://bharmouriroots.com"
+    //return getSiteUrl()
+    
   } catch {
     return (
       process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") ||
-      "http://localhost:3000"
+      "https://bharmouriroots.com"
     );
   }
 }
