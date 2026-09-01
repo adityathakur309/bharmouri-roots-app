@@ -53,9 +53,14 @@ export default function CartPage() {
     const success = await applyCoupon(couponInput);
     if (success) {
       setCouponError("");
-      toast({ title: "Coupon applied!", description: `${couponInput.toUpperCase()} — ${couponDiscount || ""}% off` });
+      toast({
+        title: "Coupon applied!",
+        description: `${couponInput.toUpperCase()} discount applied`,
+      });
     } else {
-      setCouponError("Invalid coupon code. Try HIMALAYA10 or ORGANIC20");
+      setCouponError(
+        "Could not apply coupon. Sign in and check the code, expiry, and usage limits."
+      );
     }
   };
 
@@ -76,11 +81,17 @@ export default function CartPage() {
     );
   }
 
-  const qtyControls = (productId: string, quantity: number, stock: number, compact = false) => (
+  const qtyControls = (
+    productId: string,
+    quantity: number,
+    stock: number,
+    variantId?: string,
+    compact = false
+  ) => (
     <div className={`flex items-center border rounded-xl overflow-hidden ${compact ? "scale-90 origin-left" : ""}`}>
       <button
         type="button"
-        onClick={() => updateQuantity(productId, quantity - 1)}
+        onClick={() => updateQuantity(productId, quantity - 1, variantId)}
         className="w-8 h-8 flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors"
       >
         <Minus className="w-3.5 h-3.5" />
@@ -88,7 +99,7 @@ export default function CartPage() {
       <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
       <button
         type="button"
-        onClick={() => updateQuantity(productId, Math.min(stock, quantity + 1))}
+        onClick={() => updateQuantity(productId, Math.min(stock, quantity + 1), variantId)}
         className="w-8 h-8 flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors"
       >
         <Plus className="w-3.5 h-3.5" />
@@ -160,7 +171,7 @@ export default function CartPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => { removeItem(item.product.id); toast({ title: "Removed from cart", description: item.product.name }); }}
+                            onClick={() => { removeItem(item.product.id, item.variantId); toast({ title: "Removed from cart", description: item.product.name }); }}
                             className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-colors shrink-0"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -168,7 +179,7 @@ export default function CartPage() {
                         </div>
 
                         <div className="flex items-center justify-between mt-2 sm:mt-3 gap-2 flex-wrap">
-                          {qtyControls(item.product.id, item.quantity, item.product.stock)}
+                          {qtyControls(item.product.id, item.quantity, item.product.stock, item.variantId)}
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
@@ -209,7 +220,7 @@ export default function CartPage() {
                         </Link>
                         <p className="text-xs text-[hsl(var(--muted-foreground))]">{formatPrice(item.product.price)} each</p>
                       </div>
-                      {qtyControls(item.product.id, item.quantity, item.product.stock, true)}
+                      {qtyControls(item.product.id, item.quantity, item.product.stock, item.variantId, true)}
                       <span className="font-bold text-sm text-[hsl(var(--primary))] w-16 sm:w-20 text-right shrink-0">
                         {formatPrice(item.product.price * item.quantity)}
                       </span>
@@ -225,7 +236,7 @@ export default function CartPage() {
                         </Button>
                         <button
                           type="button"
-                          onClick={() => { removeItem(item.product.id); toast({ title: "Removed from cart", description: item.product.name }); }}
+                          onClick={() => { removeItem(item.product.id, item.variantId); toast({ title: "Removed from cart", description: item.product.name }); }}
                           className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -383,7 +394,7 @@ export default function CartPage() {
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">Unit price</p>
                     <p className="font-semibold">{formatPrice(detailItem.product.price)}</p>
                   </div>
-                  {qtyControls(detailItem.product.id, detailItem.quantity, detailItem.product.stock)}
+                  {qtyControls(detailItem.product.id, detailItem.quantity, detailItem.product.stock, detailItem.variantId)}
                   <div className="text-right">
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">Line total</p>
                     <p className="font-bold text-[hsl(var(--primary))]">

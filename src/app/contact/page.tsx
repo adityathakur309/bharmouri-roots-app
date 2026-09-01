@@ -9,26 +9,56 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { faqs } from "@/lib/mock-data";
 import { useToast } from "@/hooks/use-toast";
-
-const contactCards = [
-  { icon: Phone, label: "Phone", value: "+91 98765 43210", desc: "Mon–Sat, 9am–6pm IST", color: "gradient-forest" },
-  { icon: Mail, label: "Email", value: "hello@bharmouriroots.in", desc: "We reply within 24 hours", color: "gradient-saffron" },
-  { icon: MapPin, label: "Address", value: "Bharmour, Chamba, HP", desc: "Himachal Pradesh - 176315", color: "gradient-forest" },
-  { icon: Clock, label: "Hours", value: "9:00 AM – 6:00 PM", desc: "Monday to Saturday", color: "gradient-saffron" },
-];
+import { usePublicSettings } from "@/hooks/use-public-settings";
+import { formatBusinessAddress } from "@/types/settings";
 
 export default function ContactPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const { toast } = useToast();
+  const { settings } = usePublicSettings();
+
+  const contactCards = [
+    {
+      icon: Phone,
+      label: "Phone",
+      value: settings.supportPhone || settings.phone,
+      desc: settings.hours,
+      color: "gradient-forest",
+    },
+    {
+      icon: Mail,
+      label: "Email",
+      value: settings.supportEmail || settings.email,
+      desc: "We reply within 24 hours",
+      color: "gradient-saffron",
+    },
+    {
+      icon: MapPin,
+      label: "Address",
+      value: `${settings.city}, ${settings.state}`,
+      desc: `${settings.addressLine} · ${settings.pincode}`,
+      color: "gradient-forest",
+    },
+    {
+      icon: Clock,
+      label: "Hours",
+      value: settings.hours.split(",")[0] || settings.hours,
+      desc: settings.hours,
+      color: "gradient-saffron",
+    },
+  ];
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSending(true);
     await new Promise((r) => setTimeout(r, 1000));
     setIsSending(false);
-    toast({ title: "Message sent! 🏔️", description: "We'll get back to you within 24 hours." });
+    toast({
+      title: "Message received",
+      description: `We'll reply to you at ${settings.supportEmail || settings.email}.`,
+    });
     setForm({ name: "", email: "", subject: "", message: "" });
   };
 
@@ -118,8 +148,10 @@ export default function ContactPage() {
               <div className="absolute inset-0 pattern-grid opacity-30" />
               <div className="relative text-center">
                 <MapPin className="w-8 h-8 mx-auto mb-2 text-[hsl(var(--primary))]" />
-                <p className="font-semibold">Bharmour, Chamba</p>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">Himachal Pradesh, India</p>
+                <p className="font-semibold">{settings.city}, {settings.state}</p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  {formatBusinessAddress(settings)}
+                </p>
               </div>
             </div>
           </motion.div>

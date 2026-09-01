@@ -10,15 +10,15 @@ import { loadEnvFiles } from "./load-env";
 loadEnvFiles();
 
 import mongoose from "mongoose";
-import { Category, Setting, User, Product, Review } from "@/lib/db/models";
+import { Category, Setting, User, Product, Review, Coupon } from "@/lib/db/models";
 import { seedAdmin } from "./seeders/seed-admin";
 import { seedCategories } from "./seeders/seed-categories";
 import { seedProducts } from "./seeders/seed-products";
 import { seedSettings } from "./seeders/seed-settings";
 import { seedDemoUsers } from "./seeders/seed-demo-users";
 import { seedReviews } from "./seeders/seed-reviews";
+import { seedCoupons } from "./seeders/seed-coupons";
 import { SEED_PRODUCTS } from "./seeders/data/products.data";
-
 function log(section: string, message: string) {
   console.log(`[seed:${section}] ${message}`);
 }
@@ -36,7 +36,8 @@ async function verify() {
     slug: { $in: SEED_PRODUCTS.map((p) => p.slug) },
     isActive: true,
   });
-  const reviews = await Review.countDocuments({ isActive: true });
+  const reviews = await Review.countDocuments({ isActive: true, status: "approved" });
+  const coupons = await Coupon.countDocuments({ isActive: true });
   const rolesSetting = await Setting.findOne({ key: "rbac.roles" }).lean();
   const permissionsSetting = await Setting.findOne({ key: "rbac.permissions" }).lean();
 
@@ -65,6 +66,7 @@ async function verify() {
   console.log(`Active products      : ${activeProducts}`);
   console.log(`Curated seed products: ${seedProductsActive}/${SEED_PRODUCTS.length}`);
   console.log(`Active reviews       : ${reviews}`);
+  console.log(`Active coupons       : ${coupons}`);
   console.log(`Roles catalog        : ${rolesSetting ? "yes" : "MISSING"}`);
   console.log(`Permissions catalog  : ${permissionsSetting ? "yes" : "MISSING"}`);
   console.log("=======================================\n");
@@ -89,6 +91,9 @@ async function verify() {
   if (reviews < 1) {
     throw new Error("Verification failed: expected seeded reviews");
   }
+  if (coupons < 1) {
+    throw new Error("Verification failed: expected seeded coupons");
+  }
 }
 
 async function seed() {
@@ -106,7 +111,7 @@ async function seed() {
     const cats = await seedCategories();
     log(
       "categories",
-      `Upserted ${cats.categoriesUpserted} categories, ${cats.subcategoriesUpserted} subcategories`
+      `Upserted ${cats.categoriesUpserted} categories, ${cats.subcategoriesUpserted} subcategories; deactivated ${cats.deactivatedLegacy} legacy`
     );
 
     const settings = await seedSettings();
@@ -127,7 +132,7 @@ async function seed() {
     const productResult = await seedProducts();
     log(
       "products",
-      `Upserted ${productResult.upserted} curated product(s); deactivated ${productResult.deactivatedLegacy} legacy seed item(s)`
+      `Upserted ${productResult.upserted} curated product(s); deactivated ${productResult.deactivatedLegacy} legacy; purged ${productResult.purgedInactive} inactive`
     );
 
     const reviewResult = await seedReviews();
@@ -135,6 +140,9 @@ async function seed() {
       "reviews",
       `Created ${reviewResult.created}, existing ${reviewResult.existing}; synced ${reviewResult.productsSynced} product rating(s)`
     );
+
+    const couponResult = await seedCoupons();
+    log("coupons", `Upserted ${couponResult.upserted} coupon(s)`);
 
     await verify();
     console.log("[seed] Completed successfully (idempotent — safe to re-run).");

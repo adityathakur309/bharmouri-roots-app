@@ -11,10 +11,19 @@ import {
 import { parseJsonBody, type AuthenticatedRequest } from "@/lib/middleware/with-handler";
 import { NextRequest } from "next/server";
 import { authService } from "./auth.service";
+import { appendAuthCookie, clearAuthCookieResponse } from "@/lib/auth/cookie";
 import {
-  appendAuthCookie,
-  clearAuthCookieResponse,
-} from "@/lib/auth/cookie";
+  buildGoogleAuthUrl,
+  createOAuthState,
+  exchangeGoogleCode,
+  isGoogleOAuthConfigured,
+  OAUTH_CALLBACK_COOKIE,
+  OAUTH_STATE_COOKIE,
+  sanitizeCallbackUrl,
+} from "@/lib/auth/google-oauth";
+import { AUTH_COOKIE } from "@/lib/constants/auth";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 export class AuthController {
   /** Step 1: email only — send complete-registration link */
@@ -87,6 +96,98 @@ export class AuthController {
   async logout() {
     const res = successResponse({ ok: true }, { message: "Logged out" });
     return clearAuthCookieResponse(res);
+  }
+
+  async getProviders() {
+    return successResponse({
+      google: isGoogleOAuthConfigured(),
+    });
+  }
+
+  async googleStart(request: NextRequest) {
+    if (!isGoogleOAuthConfigured()) {
+      return NextResponse.redirect(new URL("/login?error=google_not_configured", request.url));
+    }
+
+    const { searchParams } = new URL(request.url);
+    const callbackUrl = sanitizeCallbackUrl(searchParams.get("callbackUrl"));
+    const state = createOAuthState();
+
+    const res = NextResponse.redirect(buildGoogleAuthUrl(state));
+    res.cookies.set(OAUTH_STATE_COOKIE, state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 600,
+    });
+    res.cookies.set(OAUTH_CALLBACK_COOKIE, callbackUrl, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 600,
+    });
+    return res;
+  }
+
+  async googleCallback(request: NextRequest) {
+    const { searchParams } = new URL(request.url);
+    const code = searchParams.get("code");
+    const state = searchParams.get("state");
+    const error = searchParams.get("error");
+
+    const cookieStore = await cookies();
+    const expectedState = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
+    const callbackUrl = sanitizeCallbackUrl(
+      cookieStore.get(OAUTH_CALLBACK_COOKIE)?.value ?? "/"
+    );
+
+    const fail = (reason: string) =>
+      NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent(reason)}`, request.url)
+      );
+
+    if (error) return fail("google_denied");
+    if (!code || !state || !expectedState || state !== expectedState) {
+      return fail("google_invalid_state");
+    }
+
+    try {
+      const profile = await exchangeGoogleCode(code);
+      const result = await authService.loginWithGoogle(profile);
+      const res = NextResponse.redirect(
+        new URL(
+          `/oauth-callback?next=${encodeURIComponent(callbackUrl)}`,
+          request.url
+        )
+      );
+      appendAuthCookie(res, result.accessToken);
+      res.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/", maxAge: 0 });
+      res.cookies.set(OAUTH_CALLBACK_COOKIE, "", { path: "/", maxAge: 0 });
+      return res;
+    } catch {
+      return fail("google_auth_failed");
+    }
+  }
+
+  /** Returns session after OAuth redirect (cookie already set). */
+  async oauthSession(request: NextRequest) {
+    const token = request.cookies.get(AUTH_COOKIE)?.value;
+    if (!token) {
+      return successResponse(null, { message: "No session" });
+    }
+    try {
+      const { verifyAccessToken } = await import("@/lib/utils/auth-helper");
+      const payload = verifyAccessToken(token);
+      if (!payload) {
+        return successResponse(null, { message: "Invalid session" });
+      }
+      const user = await authService.getProfile(payload.id);
+      return successResponse({ user, accessToken: token });
+    } catch {
+      return successResponse(null, { message: "Invalid session" });
+    }
   }
 }
 

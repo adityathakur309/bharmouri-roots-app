@@ -33,15 +33,13 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function appBaseUrl(): string {
   try {
-    return "https://bharmouriroots.com"
-    //return getSiteUrl()
-    
+    return getSiteUrl();
   } catch {
     return (
       process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
       process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") ||
-      "https://bharmouriroots.com"
+      "http://localhost:3000"
     );
   }
 }
@@ -177,11 +175,67 @@ export class AuthService {
     return { user: publicUser, accessToken };
   }
 
+  async loginWithGoogle(profile: {
+    id: string;
+    email: string;
+    name: string;
+    picture?: string;
+    verified_email?: boolean;
+  }) {
+    const email = profile.email.toLowerCase().trim();
+    if (!email) throw new ValidationError("Google account email is required");
+
+    let user =
+      (await authRepository.findByGoogleId(profile.id)) ??
+      (await authRepository.findByEmail(email));
+
+    if (user && !user.isActive) {
+      throw new UnauthorizedError("Account is deactivated");
+    }
+
+    if (!user) {
+      const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+      const isBootstrapAdmin = Boolean(adminEmail && email === adminEmail);
+
+      user = await authRepository.create({
+        name: profile.name?.trim() || email.split("@")[0],
+        email,
+        googleId: profile.id,
+        avatar: profile.picture,
+        role: isBootstrapAdmin ? "admin" : "user",
+        emailVerified: profile.verified_email ? new Date() : new Date(),
+      });
+      logger.info("User created via Google OAuth", { email });
+    } else {
+      const updates: Record<string, unknown> = {};
+      if (!user.googleId) updates.googleId = profile.id;
+      if (profile.picture && !user.avatar) updates.avatar = profile.picture;
+      if (!user.emailVerified) updates.emailVerified = new Date();
+      if (Object.keys(updates).length) {
+        user = (await authRepository.updateById(String(user._id), updates)) ?? user;
+      }
+    }
+
+    const publicUser = toPublicUser(user);
+    const accessToken = signAccessToken({
+      id: publicUser.id,
+      name: publicUser.name,
+      email: publicUser.email,
+      role: publicUser.role,
+    });
+
+    logger.info("User logged in via Google", { userId: publicUser.id });
+    return { user: publicUser, accessToken };
+  }
+
   async login(input: LoginInput) {
     const user = await authRepository.findByEmailWithPassword(input.email.toLowerCase());
-    if (!user?.password) {
+    if (!user) {
       logger.warn("Login failed: unknown email", { email: input.email.toLowerCase() });
       throw new UnauthorizedError("Invalid email or password");
+    }
+    if (!user.password) {
+      throw new UnauthorizedError("This account uses Google sign-in. Please continue with Google.");
     }
 
     if (!user.isActive) {

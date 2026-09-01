@@ -44,7 +44,10 @@ export class ReviewController {
     const body = await parseJsonBody(request);
     const input = createReviewSchema.parse(body);
     const review = await reviewService.create(productId, request.user.id, input);
-    return successResponse(review, { message: "Review submitted", status: 201 });
+    return successResponse(review, {
+      message: "Review submitted for moderation",
+      status: 201,
+    });
   }
 
   async mine(request: AuthenticatedRequest, context: RouteContext) {
@@ -52,6 +55,34 @@ export class ReviewController {
     const productId = await resolveProductId(id);
     const review = await reviewService.getMineForProduct(productId, request.user.id);
     return successResponse(review);
+  }
+
+  async eligibility(request: AuthenticatedRequest, context: RouteContext) {
+    const { id } = await context.params;
+    const productId = await resolveProductId(id);
+    const result = await reviewService.canReview(productId, request.user.id);
+    return successResponse(result);
+  }
+
+  async listAdmin(request: NextRequest) {
+    const { searchParams } = new URL(request.url);
+    const { adminReviewQuerySchema } = await import(
+      "@/lib/validators/review.validator"
+    );
+    const query = parseQuery(adminReviewQuerySchema, searchParams);
+    const result = await reviewService.listAdmin(query);
+    return successResponse(result.reviews, { meta: result.meta });
+  }
+
+  async moderate(request: AuthenticatedRequest, context: RouteContext) {
+    const { id } = await context.params;
+    const body = await parseJsonBody(request);
+    const { moderateReviewSchema } = await import(
+      "@/lib/validators/review.validator"
+    );
+    const input = moderateReviewSchema.parse(body);
+    const review = await reviewService.moderate(id, request.user.id, input);
+    return successResponse(review, { message: `Review ${input.status}` });
   }
 
   async update(request: AuthenticatedRequest, context: RouteContext) {

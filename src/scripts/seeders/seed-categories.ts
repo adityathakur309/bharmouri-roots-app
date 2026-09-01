@@ -1,15 +1,22 @@
 import type { ClientSession } from "mongoose";
 import { Category } from "@/lib/db/models";
-import { SEED_CATEGORIES } from "./data/categories.data";
+import { LEGACY_SEED_CATEGORY_SLUGS, SEED_CATEGORIES } from "./data/categories.data";
 
 export interface CategorySeedResult {
   categoriesUpserted: number;
   subcategoriesUpserted: number;
+  deactivatedLegacy: number;
 }
 
 export async function seedCategories(session?: ClientSession): Promise<CategorySeedResult> {
   let categoriesUpserted = 0;
   let subcategoriesUpserted = 0;
+
+  const keepSlugs = new Set<string>();
+  for (const cat of SEED_CATEGORIES) {
+    keepSlugs.add(cat.slug);
+    for (const sub of cat.subcategories) keepSlugs.add(sub.slug);
+  }
 
   for (const cat of SEED_CATEGORIES) {
     const parent = await Category.findOneAndUpdate(
@@ -55,5 +62,17 @@ export async function seedCategories(session?: ClientSession): Promise<CategoryS
     }
   }
 
-  return { categoriesUpserted, subcategoriesUpserted };
+  // Soft-retire any category/subcategory not in the curated taxonomy
+  void LEGACY_SEED_CATEGORY_SLUGS;
+  const deactivateResult = await Category.updateMany(
+    { slug: { $nin: [...keepSlugs] }, isActive: true },
+    { $set: { isActive: false } },
+    session ? { session } : undefined
+  );
+
+  return {
+    categoriesUpserted,
+    subcategoriesUpserted,
+    deactivatedLegacy: deactivateResult.modifiedCount ?? 0,
+  };
 }

@@ -3,16 +3,23 @@ import { apiRequest } from "./client";
 export interface ReviewItem {
   id: string;
   productId: string;
+  productName?: string;
+  productSlug?: string;
+  productImage?: string;
   userId: string;
+  userEmail?: string;
   name: string;
   avatar: string;
   rating: number;
   comment: string;
   title?: string;
   verified: boolean;
+  status?: "pending" | "approved" | "rejected";
+  rejectionReason?: string;
   date: string;
   createdAt?: string;
   updatedAt?: string;
+  moderatedAt?: string;
 }
 
 export interface ReviewSummary {
@@ -28,6 +35,14 @@ export const reviewApi = {
   mine: (productIdOrSlug: string) =>
     apiRequest<ReviewItem | null>("get", `/products/${productIdOrSlug}/reviews/mine`),
 
+  eligibility: (productIdOrSlug: string) =>
+    apiRequest<{
+      canSubmit: boolean;
+      purchased: boolean;
+      hasReview: boolean;
+      myReview: ReviewItem | null;
+    }>("get", `/products/${productIdOrSlug}/reviews/eligibility`),
+
   create: (
     productIdOrSlug: string,
     data: { rating: number; comment: string; title?: string }
@@ -40,4 +55,12 @@ export const reviewApi = {
 
   remove: (reviewId: string) =>
     apiRequest<{ deleted: boolean; summary: ReviewSummary }>("delete", `/reviews/${reviewId}`),
+
+  adminList: (params?: Record<string, unknown>) =>
+    apiRequest<ReviewItem[]>("get", "/admin/reviews", undefined, params),
+
+  moderate: (
+    reviewId: string,
+    data: { status: "approved" | "rejected"; rejectionReason?: string }
+  ) => apiRequest<ReviewItem>("patch", `/admin/reviews/${reviewId}`, data),
 };

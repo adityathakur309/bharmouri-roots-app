@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, Heart, User, MapPin, LogOut,
-  Menu, X, Leaf, ChevronRight, Bell,
+  Menu, X, Leaf, ChevronRight, Bell, RotateCcw,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { RoleGuard } from "@/components/auth/role-guard";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const dashboardLinks = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "My Orders", href: "/dashboard/orders", icon: Package },
+  { label: "My Returns", href: "/dashboard/returns", icon: RotateCcw },
   { label: "Wishlist", href: "/dashboard/wishlist", icon: Heart },
   { label: "Profile", href: "/dashboard/profile", icon: User },
   { label: "Addresses", href: "/dashboard/addresses", icon: MapPin },

@@ -7,6 +7,7 @@ import {
   isMockPaymentMode,
   mockPaymentClient,
 } from "./mock-payment.client";
+import { isRefundMockMode, refundMockClient } from "./refund-mock.client";
 
 let razorpayInstance: Razorpay | null = null;
 
@@ -79,6 +80,58 @@ export class RazorpayClient {
     const keyId = process.env.RAZORPAY_KEY_ID;
     if (!keyId) throw new AppError("Razorpay is not configured", 503);
     return keyId;
+  }
+
+  /** Fetch payment entity from Razorpay (live only). */
+  async fetchPayment(razorpayPaymentId: string) {
+    assertPaymentGatewayReady();
+    if (this.isMockMode()) {
+      return {
+        id: razorpayPaymentId,
+        status: "captured",
+        amount: 0,
+        currency: "INR",
+        order_id: "",
+      };
+    }
+    const razorpay = getRazorpay();
+    return razorpay.payments.fetch(razorpayPaymentId);
+  }
+
+  /**
+   * Verify Razorpay webhook signature (HMAC SHA256 of raw body).
+   * Requires RAZORPAY_WEBHOOK_SECRET.
+   */
+  verifyWebhookSignature(rawBody: string, signature: string): boolean {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+    if (!secret) return false;
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
+    return timingSafeEqualString(expected, signature);
+  }
+
+  async refundPayment(
+    razorpayPaymentId: string,
+    amountPaise?: number,
+    notes?: Record<string, string>
+  ) {
+    assertPaymentGatewayReady();
+    const receipt = notes?.requestNumber ?? notes?.receipt;
+    if (isRefundMockMode()) {
+      return refundMockClient.refundPayment(
+        razorpayPaymentId,
+        amountPaise ?? 0,
+        receipt
+      );
+    }
+    const razorpay = getRazorpay();
+    return razorpay.payments.refund(razorpayPaymentId, {
+      ...(amountPaise !== undefined ? { amount: amountPaise } : {}),
+      ...(notes ? { notes } : {}),
+      ...(receipt ? { receipt } : {}),
+    });
   }
 }
 

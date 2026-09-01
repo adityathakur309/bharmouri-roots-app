@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "npx tsx src/scripts/seed.ts",
+    "generate:seed-images": "npx tsx src/scripts/generate-seed-images.ts",
     "generate:seo-assets": "npx tsx src/scripts/generate-seo-assets.ts",
     "test:mongo": "npx tsx src/scripts/test-mongo.ts"
   },

@@ -66,4 +66,10 @@ export const authApi = {
     }
     setStoredToken(null);
   },
+
+  getProviders: () =>
+    apiRequest<{ google: boolean }>("get", "/auth/providers"),
+
+  oauthSession: () =>
+    apiRequest<{ user: AuthUser; accessToken: string } | null>("get", "/auth/oauth-session"),
 };

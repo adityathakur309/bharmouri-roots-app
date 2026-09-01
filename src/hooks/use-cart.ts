@@ -61,7 +61,7 @@ export function useCart() {
   );
 
   const replaceServerCart = useCallback(
-    async (nextItems: { product: Product; quantity: number }[]) => {
+    async (nextItems: { product: Product; quantity: number; variantId?: string }[]) => {
       if (!isLoggedIn) return { synced: 0, skipped: 0 };
       await cartApi.clear();
       let synced = 0;
@@ -72,7 +72,7 @@ export function useCart() {
           continue;
         }
         try {
-          await cartApi.addItem(item.product.id, item.quantity);
+          await cartApi.addItem(item.product.id, item.quantity, item.variantId);
           synced += item.quantity;
         } catch {
           skipped += item.quantity;
@@ -85,15 +85,15 @@ export function useCart() {
   );
 
   const addItem = useCallback(
-    async (product: Product, quantity = 1) => {
-      useCartStore.getState().addItem(product, quantity);
+    async (product: Product, quantity = 1, variantId?: string) => {
+      useCartStore.getState().addItem(product, quantity, variantId);
 
       if (!isLoggedIn) return;
 
       if (!isValidMongoId(product.id)) return;
 
       try {
-        await cartApi.addItem(product.id, quantity);
+        await cartApi.addItem(product.id, quantity, variantId);
         await syncCart();
       } catch {
         /* local state kept; server sync may fail for stale ids */
@@ -103,11 +103,11 @@ export function useCart() {
   );
 
   const removeItem = useCallback(
-    async (productId: string) => {
-      useCartStore.getState().removeItem(productId);
+    async (productId: string, variantId?: string) => {
+      useCartStore.getState().removeItem(productId, variantId);
       if (isLoggedIn && isValidMongoId(productId)) {
         try {
-          await cartApi.updateItem(productId, 0);
+          await cartApi.updateItem(productId, 0, variantId);
           await syncCart();
         } catch {
           /* local state kept */
@@ -118,11 +118,11 @@ export function useCart() {
   );
 
   const updateQuantity = useCallback(
-    async (productId: string, quantity: number) => {
-      useCartStore.getState().updateQuantity(productId, quantity);
+    async (productId: string, quantity: number, variantId?: string) => {
+      useCartStore.getState().updateQuantity(productId, quantity, variantId);
       if (isLoggedIn && isValidMongoId(productId)) {
         try {
-          await cartApi.updateItem(productId, quantity);
+          await cartApi.updateItem(productId, quantity, variantId);
           await syncCart();
         } catch {
           /* local state kept */
@@ -134,16 +134,14 @@ export function useCart() {
 
   const applyCoupon = useCallback(
     async (code: string) => {
-      if (isLoggedIn) {
-        try {
-          await cartApi.applyCoupon(code);
-          await syncCart();
-          return true;
-        } catch {
-          return useCartStore.getState().applyCoupon(code);
-        }
+      if (!isLoggedIn) return false;
+      try {
+        await cartApi.applyCoupon(code);
+        await syncCart();
+        return true;
+      } catch {
+        return false;
       }
-      return useCartStore.getState().applyCoupon(code);
     },
     [isLoggedIn, syncCart]
   );
@@ -173,11 +171,12 @@ export function useCart() {
 
   /** Swap cart to a single product for direct checkout. Previous cart is restored if checkout is abandoned. */
   const beginBuyNow = useCallback(
-    async (product: Product, quantity = 1) => {
+    async (product: Product, quantity = 1, variantId?: string) => {
       const state = useCartStore.getState();
       saveBuyNowIntent({
         product,
         quantity,
+        variantId,
         snapshot: {
           items: state.items,
           couponCode: state.couponCode,
@@ -188,7 +187,7 @@ export function useCart() {
       // Guests only store intent; cart is applied after login on /checkout.
       if (!isLoggedIn) return;
 
-      const buyNowItems = [{ product, quantity }];
+      const buyNowItems = [{ product, quantity, variantId }];
       setLocalCartItems({ items: buyNowItems });
 
       try {
@@ -206,7 +205,9 @@ export function useCart() {
     const intent = getBuyNowIntent();
     if (!intent) return false;
 
-    const buyNowItems = [{ product: intent.product, quantity: intent.quantity }];
+    const buyNowItems = [
+      { product: intent.product, quantity: intent.quantity, variantId: intent.variantId },
+    ];
     setLocalCartItems({ items: buyNowItems });
 
     if (isLoggedIn) {

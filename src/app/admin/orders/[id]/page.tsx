@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShipmentTimeline } from "@/components/shipping/shipment-timeline";
+import { OrderFulfillmentStepper } from "@/components/admin/order-fulfillment-stepper";
+import { orderStatusImpact } from "@/lib/order-status";
 import { orderApi } from "@/services/api";
 import { formatPrice, formatDate } from "@/lib/utils";
 import { orderStatusConfig } from "@/lib/order-status";
@@ -87,6 +89,7 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmShip, setConfirmShip] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -120,6 +123,28 @@ export default function AdminOrderDetailPage() {
     } catch (err) {
       toast({
         title: "Shipment failed",
+        description: errMessage(err, "Please try again"),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateStatus = async (nextStatus: OrderStatus) => {
+    if (!order) return;
+    setBusy(true);
+    try {
+      await orderApi.updateStatus(order.id, { status: nextStatus });
+      await load();
+      setPendingStatus(null);
+      toast({
+        title: "Status updated",
+        description: `Order moved to ${orderStatusConfig[nextStatus]?.label ?? nextStatus}`,
+      });
+    } catch (err) {
+      toast({
+        title: "Status update failed",
         description: errMessage(err, "Please try again"),
         variant: "destructive",
       });
@@ -222,6 +247,16 @@ export default function AdminOrderDetailPage() {
 
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
+          <OrderFulfillmentStepper
+            status={order.status as OrderStatus}
+            paymentMethod={order.paymentMethod}
+            paymentStatus={order.paymentStatus}
+            busy={busy}
+            onAdvance={(next) => setPendingStatus(next)}
+            onCreateShipment={() => setConfirmShip(true)}
+            onCancel={() => setPendingStatus("cancelled")}
+          />
+
           <motion.section
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -377,6 +412,36 @@ export default function AdminOrderDetailPage() {
             <Button disabled={busy} onClick={() => void createShipment()} className="gap-2">
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
               Create shipment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingStatus} onOpenChange={(o) => !busy && !o && setPendingStatus(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Change status to “{pendingStatus ? orderStatusConfig[pendingStatus]?.label : ""}”?
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-line">
+              {pendingStatus
+                ? orderStatusImpact[pendingStatus] ??
+                  `Order will move to ${orderStatusConfig[pendingStatus]?.label}.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" disabled={busy} onClick={() => setPendingStatus(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy || !pendingStatus}
+              variant={pendingStatus === "cancelled" ? "destructive" : "default"}
+              onClick={() => pendingStatus && void updateStatus(pendingStatus)}
+              className="gap-2"
+            >
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>

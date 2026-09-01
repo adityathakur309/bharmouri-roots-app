@@ -1,21 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Star, Heart, ShoppingCart, Truck, Shield, RotateCcw,
-  ChevronRight, Plus, Minus, Check, MapPin, Leaf,
+  ChevronRight, Plus, Minus, Check, MapPin, Leaf, ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ProductCard } from "@/components/shared/product-card";
 import { ProductReviews } from "@/components/product/product-reviews";
 import { useCart } from "@/hooks/use-cart";
 import { productApi } from "@/services/api";
 import type { Product } from "@/types/product";
+import type { ReviewSummary } from "@/services/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -35,6 +41,10 @@ export function ProductDetailClient({ slug }: { slug: string }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [lensPos, setLensPos] = useState({ x: 50, y: 50 });
+  const [lensActive, setLensActive] = useState(false);
 
   const router = useRouter();
   const { addItem, beginBuyNow } = useCart();
@@ -45,6 +55,15 @@ export function ProductDetailClient({ slug }: { slug: string }) {
   const showShopActions = !isAdmin;
   const [buyingNow, setBuyingNow] = useState(false);
 
+  const handleReviewSummaryChange = useCallback((summary: ReviewSummary) => {
+    setReviewCount(summary.total);
+    setProduct((prev) =>
+      prev
+        ? { ...prev, rating: summary.average, reviews: summary.total }
+        : prev
+    );
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     productApi
@@ -52,6 +71,8 @@ export function ProductDetailClient({ slug }: { slug: string }) {
       .then(async (res) => {
         setProduct(res.data);
         setReviewCount(res.data.reviews ?? 0);
+        const activeVariants = (res.data.variants ?? []).filter((v) => v.isActive !== false);
+        setSelectedVariantId(activeVariants[0]?.id ?? null);
         try {
           const relatedRes = await productApi.list({ category: res.data.categorySlug, limit: 8 });
           setRelated(
@@ -80,12 +101,37 @@ export function ProductDetailClient({ slug }: { slug: string }) {
 
   if (!product) return notFound();
 
-  const savings = product.originalPrice ? product.originalPrice - product.price : 0;
+  const activeVariants = (product.variants ?? []).filter((v) => v.isActive !== false);
+  const selectedVariant =
+    activeVariants.find((v) => v.id === selectedVariantId) ?? activeVariants[0] ?? null;
+  const unitPrice = selectedVariant
+    ? selectedVariant.salePrice && selectedVariant.salePrice > 0
+      ? selectedVariant.salePrice
+      : selectedVariant.price
+    : product.price;
+  const compareAt = selectedVariant
+    ? selectedVariant.salePrice && selectedVariant.salePrice > 0
+      ? selectedVariant.price
+      : product.originalPrice
+    : product.originalPrice;
+  const availableStock = selectedVariant ? selectedVariant.stock : product.stock;
+  const displayWeight = selectedVariant?.weight || product.weight;
+  const cartProduct = {
+    ...product,
+    price: unitPrice,
+    originalPrice: compareAt,
+    stock: availableStock,
+    weight: displayWeight,
+  };
+  const savings = compareAt ? compareAt - unitPrice : 0;
 
   const handleAddToCart = () => {
-    addItem(product, quantity);
+    addItem(cartProduct, quantity, selectedVariant?.id);
     setAddedToCart(true);
-    toast({ title: "Added to cart!", description: `${quantity}x ${product.name}` });
+    toast({
+      title: "Added to cart!",
+      description: `${quantity}x ${product.name}${selectedVariant ? ` (${selectedVariant.name})` : ""}`,
+    });
     setTimeout(() => setAddedToCart(false), 2000);
   };
 
@@ -93,7 +139,7 @@ export function ProductDetailClient({ slug }: { slug: string }) {
     if (buyingNow) return;
     setBuyingNow(true);
     try {
-      await beginBuyNow(product, quantity);
+      await beginBuyNow(cartProduct, quantity, selectedVariant?.id);
       if (!isAuthenticated) {
         router.push(`/login?callbackUrl=${encodeURIComponent("/checkout")}`);
         return;
@@ -130,9 +176,46 @@ export function ProductDetailClient({ slug }: { slug: string }) {
               key={selectedImage}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[hsl(var(--muted))] border"
+              className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[hsl(var(--muted))] border group cursor-zoom-in"
+              onMouseEnter={() => setLensActive(true)}
+              onMouseLeave={() => setLensActive(false)}
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                setLensPos({
+                  x: Math.min(100, Math.max(0, x)),
+                  y: Math.min(100, Math.max(0, y)),
+                });
+              }}
+              onClick={() => setZoomOpen(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setZoomOpen(true);
+                }
+              }}
+              aria-label="Zoom product image"
             >
-              <img src={normalizeProductImageUrl(product.images[selectedImage] ?? "")} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={normalizeProductImageUrl(product.images[selectedImage] ?? "")}
+                alt={product.name}
+                className={cn(
+                  "absolute inset-0 h-full w-full object-cover transition-transform duration-200 ease-out",
+                  lensActive && "scale-150"
+                )}
+                style={
+                  lensActive
+                    ? { transformOrigin: `${lensPos.x}% ${lensPos.y}%` }
+                    : undefined
+                }
+              />
+              <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-black/55 text-white text-[11px] px-2.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <ZoomIn className="w-3.5 h-3.5" /> Click to enlarge
+              </div>
               {product.discount && (
                 <div className="absolute top-4 left-4">
                   <Badge variant="saffron" className="text-sm font-bold">-{product.discount}%</Badge>
@@ -140,7 +223,15 @@ export function ProductDetailClient({ slug }: { slug: string }) {
               )}
               {showShopActions && (
                 <button
-                  onClick={() => { toggleItem(product); toast({ title: wishlisted ? "Removed from wishlist" : "Added to wishlist!", description: product.name }); }}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleItem(product);
+                    toast({
+                      title: wishlisted ? "Removed from wishlist" : "Added to wishlist!",
+                      description: product.name,
+                    });
+                  }}
                   className={cn("absolute top-4 right-4 w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-colors", wishlisted ? "bg-red-500 text-white" : "bg-white/90 text-gray-700 hover:bg-red-50")}
                 >
                   <Heart className={cn("w-5 h-5", wishlisted && "fill-current")} />
@@ -154,9 +245,11 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                 {product.images.map((img, i) => (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => setSelectedImage(i)}
                     className={cn("w-20 h-20 rounded-xl overflow-hidden border-2 transition-all", selectedImage === i ? "border-[hsl(var(--primary))] shadow-md" : "border-transparent opacity-60 hover:opacity-100")}
                   >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={normalizeProductImageUrl(img)} alt={`${product.name} ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
@@ -184,15 +277,15 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                 </div>
                 <span className="font-semibold text-sm">{product.rating}</span>
                 <span className="text-[hsl(var(--muted-foreground))] text-sm">({product.reviews} reviews)</span>
-                <span className="text-green-600 text-sm font-medium">✓ In Stock ({product.stock})</span>
+                <span className="text-green-600 text-sm font-medium">✓ In Stock ({availableStock})</span>
               </div>
 
               {/* Price */}
               <div className="flex items-baseline gap-3 mb-4">
-                <span className="text-3xl font-bold text-[hsl(var(--primary))]">{formatPrice(product.price)}</span>
-                {product.originalPrice && (
+                <span className="text-3xl font-bold text-[hsl(var(--primary))]">{formatPrice(unitPrice)}</span>
+                {compareAt && compareAt > unitPrice && (
                   <>
-                    <span className="text-lg text-[hsl(var(--muted-foreground))] line-through">{formatPrice(product.originalPrice)}</span>
+                    <span className="text-lg text-[hsl(var(--muted-foreground))] line-through">{formatPrice(compareAt)}</span>
                     <Badge variant="green" className="text-sm">Save {formatPrice(savings)}</Badge>
                   </>
                 )}
@@ -201,11 +294,48 @@ export function ProductDetailClient({ slug }: { slug: string }) {
               <p className="text-[hsl(var(--foreground))]/80 leading-relaxed">{product.shortDescription}</p>
             </div>
 
+            {activeVariants.length > 0 && (
+              <div>
+                <label className="text-sm font-semibold mb-2 block">Select size / pack</label>
+                <div className="flex flex-wrap gap-2">
+                  {activeVariants.map((v) => {
+                    const price =
+                      v.salePrice && v.salePrice > 0 ? v.salePrice : v.price;
+                    const selected = selectedVariant?.id === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        disabled={v.stock < 1}
+                        onClick={() => {
+                          setSelectedVariantId(v.id);
+                          setQuantity(1);
+                        }}
+                        className={cn(
+                          "px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
+                          selected
+                            ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                            : "hover:bg-[hsl(var(--muted))]",
+                          v.stock < 1 && "opacity-40 cursor-not-allowed"
+                        )}
+                      >
+                        {v.name}
+                        <span className="block text-[10px] font-normal opacity-80">
+                          {formatPrice(price)}
+                          {v.stock < 1 ? " · Out of stock" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Origin */}
             <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] p-3 bg-[hsl(var(--muted))]/50 rounded-xl">
               <MapPin className="w-4 h-4 text-[hsl(var(--primary))]" />
               <span>Origin: <strong className="text-[hsl(var(--foreground))]">{product.origin}</strong></span>
-              {product.weight && <><span>•</span><span>Weight: <strong className="text-[hsl(var(--foreground))]">{product.weight}</strong></span></>}
+              {displayWeight && <><span>•</span><span>Weight: <strong className="text-[hsl(var(--foreground))]">{displayWeight}</strong></span></>}
             </div>
 
             {/* Features */}
@@ -226,11 +356,11 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                     <Minus className="w-4 h-4" />
                   </button>
                   <span className="w-12 text-center font-semibold">{quantity}</span>
-                  <button onClick={() => setQuantity(Math.min(product.stock, quantity + 1))} className="w-10 h-10 flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
+                  <button onClick={() => setQuantity(Math.min(availableStock, quantity + 1))} className="w-10 h-10 flex items-center justify-center hover:bg-[hsl(var(--muted))] transition-colors">
                     <Plus className="w-4 h-4" />
                   </button>
                 </div>
-                <span className="text-sm text-[hsl(var(--muted-foreground))]">Total: <strong className="text-[hsl(var(--foreground))]">{formatPrice(product.price * quantity)}</strong></span>
+                <span className="text-sm text-[hsl(var(--muted-foreground))]">Total: <strong className="text-[hsl(var(--foreground))]">{formatPrice(unitPrice * quantity)}</strong></span>
               </div>
             </div>
 
@@ -240,6 +370,7 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                   size="lg"
                   className="flex-1 gap-2 relative overflow-hidden"
                   onClick={handleAddToCart}
+                  disabled={availableStock < 1}
                 >
                   <AnimatePresence mode="wait">
                     {addedToCart ? (
@@ -258,7 +389,7 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                   variant="saffron"
                   className="flex-1 gap-2"
                   onClick={handleBuyNow}
-                  disabled={buyingNow || product.stock < 1}
+                  disabled={buyingNow || availableStock < 1}
                 >
                   {buyingNow ? "Please wait…" : "Buy Now"}
                 </Button>
@@ -321,14 +452,7 @@ export function ProductDetailClient({ slug }: { slug: string }) {
                 productIdOrSlug={product.id}
                 initialAverage={product.rating}
                 initialTotal={product.reviews}
-                onSummaryChange={(summary) => {
-                  setReviewCount(summary.total);
-                  setProduct((prev) =>
-                    prev
-                      ? { ...prev, rating: summary.average, reviews: summary.total }
-                      : prev
-                  );
-                }}
+                onSummaryChange={handleReviewSummaryChange}
               />
             </TabsContent>
 
@@ -364,6 +488,44 @@ export function ProductDetailClient({ slug }: { slug: string }) {
           </div>
         )}
       </div>
+
+      <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
+        <DialogContent className="max-w-[min(96vw,920px)] w-full border-0 bg-black/95 p-2 sm:p-3 text-white [&>button]:text-white">
+          <DialogTitle className="sr-only">{product.name} — zoomed image</DialogTitle>
+          <div className="relative aspect-square w-full overflow-hidden rounded-xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={normalizeProductImageUrl(product.images[selectedImage] ?? "")}
+              alt={product.name}
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          </div>
+          {product.images.length > 1 && (
+            <div className="flex justify-center gap-2 pt-1 pb-1">
+              {product.images.map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelectedImage(i)}
+                  className={cn(
+                    "h-14 w-14 rounded-lg overflow-hidden border-2 transition-all",
+                    selectedImage === i
+                      ? "border-white"
+                      : "border-transparent opacity-60 hover:opacity-100"
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={normalizeProductImageUrl(img)}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

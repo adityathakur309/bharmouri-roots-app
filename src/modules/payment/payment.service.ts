@@ -277,6 +277,31 @@ export class PaymentService {
       };
     }
 
+    // Live: confirm payment entity status with Razorpay after signature check
+    if (!razorpayClient.isMockMode()) {
+      try {
+        const remote = await razorpayClient.fetchPayment(data.razorpayPaymentId);
+        const status = String((remote as { status?: string }).status ?? "");
+        if (status !== "captured" && status !== "authorized") {
+          await this.markFailed(
+            String(claimed._id),
+            `Payment status is ${status || "unknown"}`
+          );
+          return {
+            outcome: "failed",
+            paymentId: String(claimed._id),
+            failureReason: `Payment status is ${status || "unknown"}`,
+          };
+        }
+      } catch (error) {
+        logger.warn("Razorpay payment fetch failed after valid signature", {
+          paymentId: data.razorpayPaymentId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        // Signature is valid — continue; webhook can reconcile if needed
+      }
+    }
+
     try {
       await paymentRepository.update(String(claimed._id), {
         status: "paid",
@@ -374,6 +399,343 @@ export class PaymentService {
       paidAt: new Date(),
       lockExpiresAt: new Date(),
     });
+  }
+
+  /**
+   * Process Razorpay webhook events (payment.captured / payment.failed / refund.*).
+   * Idempotent — safe to retry.
+   */
+  async handleWebhookEvent(event: {
+    event?: string;
+    payload?: {
+      payment?: {
+        entity?: {
+          id?: string;
+          order_id?: string;
+          status?: string;
+          amount?: number;
+          error_description?: string;
+        };
+      };
+      refund?: {
+        entity?: {
+          id?: string;
+          payment_id?: string;
+          amount?: number;
+          status?: string;
+        };
+      };
+    };
+  }) {
+    const eventName = event.event ?? "";
+    const paymentEntity = event.payload?.payment?.entity;
+    const refundEntity = event.payload?.refund?.entity;
+
+    if (eventName === "payment.captured" && paymentEntity?.id) {
+      const existing = await paymentRepository.findByRazorpayPaymentId(
+        paymentEntity.id
+      );
+      if (existing?.status === "paid") {
+        return { handled: true, outcome: "already_paid" as const };
+      }
+
+      const byOrder = paymentEntity.order_id
+        ? await paymentRepository.findByRazorpayOrderId(paymentEntity.order_id)
+        : null;
+      const payment = existing ?? byOrder;
+      if (!payment) {
+        logger.warn("Webhook payment.captured with unknown payment", {
+          razorpayPaymentId: paymentEntity.id,
+          razorpayOrderId: paymentEntity.order_id,
+        });
+        return { handled: false, outcome: "unknown_payment" as const };
+      }
+
+      await paymentRepository.update(String(payment._id), {
+        status: "paid",
+        razorpayPaymentId: paymentEntity.id,
+        razorpayOrderId: paymentEntity.order_id ?? payment.razorpayOrderId,
+        paidAt: new Date(),
+        lockExpiresAt: new Date(),
+        metadata: {
+          ...(payment.metadata ?? {}),
+          webhookEvent: eventName,
+        },
+      });
+
+      const { orderRepository } = await import("@/modules/order/order.repository");
+      const orderId = String(payment.orderId);
+      const order = await orderRepository.findById(orderId);
+      if (order && order.paymentStatus !== "paid") {
+        const { decrementStock } = await import("@/modules/order/inventory.service");
+        if (!order.stockDecremented) {
+          await decrementStock(
+            order.items.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              name: i.name,
+            }))
+          );
+        }
+        await orderRepository.update(orderId, {
+          paymentStatus: "paid",
+          status:
+            order.status === "payment_pending" || order.status === "pending"
+              ? "confirmed"
+              : order.status,
+          paidAt: new Date(),
+          confirmedAt: order.confirmedAt ?? new Date(),
+          razorpayPaymentId: paymentEntity.id,
+          stockDecremented: true,
+        });
+      }
+
+      return { handled: true, outcome: "paid" as const };
+    }
+
+    if (eventName === "payment.failed" && paymentEntity?.id) {
+      const payment =
+        (await paymentRepository.findByRazorpayPaymentId(paymentEntity.id)) ??
+        (paymentEntity.order_id
+          ? await paymentRepository.findByRazorpayOrderId(paymentEntity.order_id)
+          : null);
+      if (payment && payment.status !== "paid") {
+        await this.markFailed(
+          String(payment._id),
+          paymentEntity.error_description || "Payment failed (webhook)"
+        );
+      }
+      return { handled: true, outcome: "failed" as const };
+    }
+
+    if (
+      (eventName === "refund.processed" ||
+        eventName === "refund.created" ||
+        eventName === "refund.failed") &&
+      refundEntity?.payment_id
+    ) {
+      const payment = await paymentRepository.findByRazorpayPaymentId(
+        refundEntity.payment_id
+      );
+      const refundPaise = Number(refundEntity.amount ?? 0);
+      const refundId = refundEntity.id;
+      const refundStatus = String(refundEntity.status ?? "");
+
+      if (payment) {
+        const metadata = (payment.metadata ?? {}) as Record<string, unknown>;
+        const priorRefunded = Number(metadata.refundedAmountPaise ?? 0);
+        const totalPaise = Math.round(payment.amount * 100);
+        const refunds = Array.isArray(metadata.refunds)
+          ? [...(metadata.refunds as Array<Record<string, unknown>>)]
+          : [];
+        const alreadyLogged = refunds.some((r) => r.id === refundId);
+        const nextRefunded =
+          eventName === "refund.failed"
+            ? priorRefunded
+            : alreadyLogged
+              ? priorRefunded
+              : priorRefunded + refundPaise;
+
+        if (!alreadyLogged && eventName !== "refund.failed") {
+          refunds.push({
+            id: refundId,
+            amount: refundPaise,
+            status: refundStatus,
+            at: new Date().toISOString(),
+          });
+        }
+
+        await paymentRepository.update(String(payment._id), {
+          status: nextRefunded >= totalPaise ? "refunded" : "paid",
+          metadata: {
+            ...metadata,
+            refundId,
+            refundAmount: refundPaise,
+            refundedAmountPaise: nextRefunded,
+            refunds,
+            webhookEvent: eventName,
+          },
+        });
+
+        const { orderRepository } = await import("@/modules/order/order.repository");
+        const order = await orderRepository.findById(String(payment.orderId));
+        if (order) {
+          const refundedInr = nextRefunded / 100;
+          const { computeOrderRefundPaymentStatus } = await import(
+            "@/modules/refund/refund-policy"
+          );
+          await orderRepository.update(String(payment.orderId), {
+            paymentStatus: computeOrderRefundPaymentStatus(order.total, refundedInr),
+          });
+        }
+      }
+
+      const requestNumber =
+        (refundEntity as { notes?: { requestNumber?: string } }).notes?.requestNumber;
+      if (requestNumber) {
+        const { RefundRequest } = await import("@/lib/db/models/refund-request.model");
+        const req = await RefundRequest.findOne({ requestNumber });
+        if (req) {
+          if (eventName === "refund.failed") {
+            if (req.status === "refund_processing") {
+              await RefundRequest.findByIdAndUpdate(req._id, {
+                $set: {
+                  status: "failed",
+                  refundFailureReason: "Refund failed at payment gateway",
+                },
+                $push: {
+                  timeline: {
+                    status: "failed",
+                    note: "Refund failed (webhook)",
+                    actorRole: "system",
+                    at: new Date(),
+                  },
+                },
+              });
+            }
+          } else if (
+            (eventName === "refund.processed" || refundStatus === "processed") &&
+            req.status === "refund_processing"
+          ) {
+            await RefundRequest.findByIdAndUpdate(req._id, {
+              $set: {
+                status: "refunded",
+                razorpayRefundId: refundId,
+                refundAmountPaise: refundPaise,
+                refundedAt: new Date(),
+                refundFailureReason: undefined,
+              },
+              $push: {
+                timeline: {
+                  status: "refunded",
+                  note: "Refund processed by payment gateway",
+                  actorRole: "system",
+                  at: new Date(),
+                },
+              },
+            });
+          }
+        }
+      }
+
+      return {
+        handled: true,
+        outcome: eventName === "refund.failed" ? ("failed" as const) : ("refunded" as const),
+      };
+    }
+
+    return { handled: false, outcome: "ignored" as const };
+  }
+
+  async refundOrderPayment(
+    orderId: string,
+    options?: { amountInr?: number; reason?: string; requestNumber?: string }
+  ) {
+    const latest = await paymentRepository.findLatestByOrderId(orderId);
+    if (!latest) throw new NotFoundError("Payment not found");
+    if (latest.method !== "razorpay") {
+      throw new ValidationError("Only Razorpay payments can be refunded online");
+    }
+    if (!["paid", "refunded"].includes(latest.status)) {
+      throw new ValidationError("Payment is not in a refundable state");
+    }
+    if (!latest.razorpayPaymentId) {
+      throw new ValidationError("Missing Razorpay payment id");
+    }
+
+    const metadata = (latest.metadata ?? {}) as Record<string, unknown>;
+    const totalPaise = Math.round(latest.amount * 100);
+    const priorRefundedPaise = Number(metadata.refundedAmountPaise ?? 0);
+    const remainingPaise = totalPaise - priorRefundedPaise;
+
+    if (remainingPaise <= 0) {
+      const existingRefundId = metadata.refundId as string | undefined;
+      return {
+        alreadyRefunded: true as const,
+        paymentId: String(latest._id),
+        refundId: existingRefundId,
+        amountPaise: priorRefundedPaise,
+        fullyRefunded: true,
+      };
+    }
+
+    const receipt = options?.requestNumber;
+    const refunds = Array.isArray(metadata.refunds)
+      ? (metadata.refunds as Array<{ receipt?: string; id?: string; amount?: number }>)
+      : [];
+    if (receipt) {
+      const dup = refunds.find((r) => r.receipt === receipt);
+      if (dup?.id) {
+        return {
+          alreadyRefunded: false as const,
+          paymentId: String(latest._id),
+          refundId: dup.id,
+          amountPaise: dup.amount ?? 0,
+          fullyRefunded: priorRefundedPaise >= totalPaise,
+        };
+      }
+    }
+
+    const amountPaise =
+      options?.amountInr !== undefined
+        ? Math.round(options.amountInr * 100)
+        : remainingPaise;
+
+    if (amountPaise <= 0 || amountPaise > remainingPaise + 1) {
+      throw new ValidationError("Invalid refund amount");
+    }
+
+    const refund = await razorpayClient.refundPayment(
+      latest.razorpayPaymentId,
+      amountPaise,
+      {
+        reason: options?.reason,
+        requestNumber: options?.requestNumber,
+        receipt: options?.requestNumber,
+      }
+    );
+
+    const refundId = (refund as { id?: string }).id;
+    const refundStatus = String((refund as { status?: string }).status ?? "processed");
+    if (refundStatus === "failed") {
+      throw new ValidationError("Payment gateway rejected the refund");
+    }
+
+    const nextRefundedPaise =
+      refundStatus === "pending" ? priorRefundedPaise : priorRefundedPaise + amountPaise;
+
+    const nextRefunds = [
+      ...refunds,
+      {
+        id: refundId,
+        amount: amountPaise,
+        receipt,
+        status: refundStatus,
+        at: new Date().toISOString(),
+      },
+    ];
+
+    await paymentRepository.update(String(latest._id), {
+      status: nextRefundedPaise >= totalPaise ? "refunded" : "paid",
+      metadata: {
+        ...metadata,
+        refundId,
+        refundAmount: amountPaise,
+        refundedAmountPaise: nextRefundedPaise,
+        refunds: nextRefunds,
+        refundReason: options?.reason,
+        refundedAt: new Date().toISOString(),
+      },
+    });
+
+    return {
+      alreadyRefunded: false as const,
+      paymentId: String(latest._id),
+      refundId,
+      amountPaise,
+      fullyRefunded: nextRefundedPaise >= totalPaise,
+      pending: refundStatus === "pending",
+    };
   }
 }
 

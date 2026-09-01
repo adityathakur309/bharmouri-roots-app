@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { getInstagramUrl } from "@/lib/config/site";
+import { usePublicSettings } from "@/hooks/use-public-settings";
+import { formatBusinessAddress } from "@/types/settings";
 
 const footerLinks = {
   shop: [
@@ -28,7 +30,8 @@ const footerLinks = {
   support: [
     { label: "FAQ", href: "/contact#faq" },
     { label: "Shipping Policy", href: "/shipping" },
-    { label: "Return Policy", href: "/returns" },
+    { label: "Refund & Returns", href: "/returns" },
+    { label: "Cancellation", href: "/cancellation" },
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Terms of Service", href: "/terms" },
     { label: "Track Order", href: "/dashboard/orders" },
@@ -36,13 +39,17 @@ const footerLinks = {
 };
 
 const socialLinks = [
-  { icon: Globe, href: getInstagramUrl(), label: "Instagram" },
+  { icon: Globe, hrefKey: "instagram" as const, label: "Instagram" },
   { icon: Link2, href: "#", label: "Facebook" },
   { icon: MessageCircle, href: "#", label: "Twitter" },
   { icon: Play, href: "#", label: "YouTube" },
 ];
 
 export function Footer() {
+  const { settings } = usePublicSettings();
+  const year = new Date().getFullYear();
+  const instagramHref = settings.instagram || getInstagramUrl();
+
   return (
     <footer className="bg-[hsl(25_15%_8%)] dark:bg-[hsl(25_15%_5%)] text-white">
       {/* CTA Banner */}
@@ -83,7 +90,7 @@ export function Footer() {
                 <Leaf className="text-white w-5 h-5" />
               </div>
               <div>
-                <span className="text-xl font-bold text-white">BharmouriRoots</span>
+                <span className="text-xl font-bold text-white">{settings.businessName}</span>
                 <p className="text-xs text-white/50 -mt-0.5 uppercase tracking-wider">Pure Himachali</p>
               </div>
             </Link>
@@ -95,15 +102,15 @@ export function Footer() {
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-sm text-white/60">
                 <MapPin className="w-4 h-4 text-[hsl(var(--accent))] shrink-0" />
-                <span>Bharmour, Chamba, Himachal Pradesh - 176315</span>
+                <span>{formatBusinessAddress(settings)}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/60">
                 <Phone className="w-4 h-4 text-[hsl(var(--accent))] shrink-0" />
-                <span>+91 98765 43210</span>
+                <span>{settings.supportPhone || settings.phone}</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-white/60">
                 <Mail className="w-4 h-4 text-[hsl(var(--accent))] shrink-0" />
-                <span>hello@bharmouriroots.in</span>
+                <span>{settings.supportEmail || settings.email}</span>
               </div>
             </div>
 
@@ -112,7 +119,7 @@ export function Footer() {
               {socialLinks.map((social) => (
                 <Link
                   key={social.label}
-                  href={social.href}
+                  href={"hrefKey" in social ? instagramHref : social.href}
                   aria-label={social.label}
                   className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-[hsl(var(--primary))] transition-colors"
                 >
@@ -132,7 +139,7 @@ export function Footer() {
               <h3 className="font-semibold text-white mb-4 uppercase tracking-wider text-xs">{col.title}</h3>
               <ul className="space-y-2.5">
                 {col.links.map((link) => (
-                  <li key={link.href}>
+                  <li key={link.href + link.label}>
                     <Link
                       href={link.href}
                       className="text-sm text-white/60 hover:text-[hsl(var(--accent))] transition-colors hover:translate-x-0.5 inline-block"
@@ -150,13 +157,13 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/40">
-          <p>© 2024 BharmouriRoots. All rights reserved. Made with ❤️ in Himachal Pradesh.</p>
+          <p>© {year} {settings.businessName}. All rights reserved. Made with care in Himachal Pradesh.</p>
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               100% Secure Payments
             </span>
-            <span>UPI • Cards • Net Banking • COD</span>
+            <span>UPI · Cards · Net Banking{settings.codEnabled ? " · COD" : ""}</span>
           </div>
         </div>
       </div>

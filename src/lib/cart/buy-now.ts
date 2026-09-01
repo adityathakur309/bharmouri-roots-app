@@ -6,6 +6,7 @@ const STORAGE_KEY = "bharmouri_buy_now";
 export interface BuyNowIntent {
   product: Product;
   quantity: number;
+  variantId?: string;
   /** Cart state before Buy Now — restored if checkout is abandoned */
   snapshot: {
     items: CartItem[];

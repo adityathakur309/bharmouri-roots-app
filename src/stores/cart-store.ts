@@ -4,6 +4,8 @@ import type { Product } from "@/types/product";
 export interface CartItem {
   product: Product;
   quantity: number;
+  variantId?: string;
+  variantName?: string;
 }
 
 interface CartStore {
@@ -15,10 +17,11 @@ interface CartStore {
     couponCode: string;
     couponDiscount: number;
   }) => void;
-  addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  addItem: (product: Product, quantity?: number, variantId?: string) => void;
+  removeItem: (productId: string, variantId?: string) => void;
+  updateQuantity: (productId: string, quantity: number, variantId?: string) => void;
   clearCart: () => void;
+  /** Guest-only optimistic apply is disabled — coupons require server validation. */
   applyCoupon: (code: string) => boolean;
   removeCoupon: () => void;
   getTotal: () => number;
@@ -26,12 +29,9 @@ interface CartStore {
   getItemCount: () => number;
 }
 
-const VALID_COUPONS: Record<string, number> = {
-  HIMALAYA10: 10,
-  BHARMOUR15: 15,
-  ORGANIC20: 20,
-  WELCOME5: 5,
-};
+function lineKey(productId: string, variantId?: string) {
+  return `${productId}::${variantId ?? ""}`;
+}
 
 export const useCartStore = create<CartStore>()((set, get) => ({
   items: [],
@@ -45,50 +45,55 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       couponDiscount: data.couponDiscount,
     }),
 
-  addItem: (product, quantity = 1) => {
+  addItem: (product, quantity = 1, variantId) => {
     set((state) => {
-      const existing = state.items.find((i) => i.product.id === product.id);
+      const key = lineKey(product.id, variantId);
+      const existing = state.items.find(
+        (i) => lineKey(i.product.id, i.variantId) === key
+      );
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.product.id === product.id
+            lineKey(i.product.id, i.variantId) === key
               ? { ...i, quantity: Math.min(i.quantity + quantity, product.stock) }
               : i
           ),
         };
       }
-      return { items: [...state.items, { product, quantity }] };
+      return {
+        items: [
+          ...state.items,
+          { product, quantity, variantId },
+        ],
+      };
     });
   },
 
-  removeItem: (productId) => {
+  removeItem: (productId, variantId) => {
     set((state) => ({
-      items: state.items.filter((i) => i.product.id !== productId),
+      items: state.items.filter(
+        (i) => lineKey(i.product.id, i.variantId) !== lineKey(productId, variantId)
+      ),
     }));
   },
 
-  updateQuantity: (productId, quantity) => {
+  updateQuantity: (productId, quantity, variantId) => {
     if (quantity <= 0) {
-      get().removeItem(productId);
+      get().removeItem(productId, variantId);
       return;
     }
     set((state) => ({
       items: state.items.map((i) =>
-        i.product.id === productId ? { ...i, quantity } : i
+        lineKey(i.product.id, i.variantId) === lineKey(productId, variantId)
+          ? { ...i, quantity }
+          : i
       ),
     }));
   },
 
   clearCart: () => set({ items: [], couponCode: "", couponDiscount: 0 }),
 
-  applyCoupon: (code) => {
-    const discount = VALID_COUPONS[code.toUpperCase()];
-    if (discount) {
-      set({ couponCode: code.toUpperCase(), couponDiscount: discount });
-      return true;
-    }
-    return false;
-  },
+  applyCoupon: () => false,
 
   removeCoupon: () => set({ couponCode: "", couponDiscount: 0 }),
 

@@ -1,30 +1,18 @@
 import type { IShippingProvider, ShippingProviderName } from "./types";
 import { mockShippingProvider } from "./mock.provider";
 import { shiprocketProvider } from "./shiprocket.provider";
-
-function hasShiprocketCredentials(): boolean {
-  const email = process.env.SHIPROCKET_EMAIL?.trim();
-  const password = process.env.SHIPROCKET_PASSWORD?.trim();
-  return Boolean(
-    email &&
-      password &&
-      password.length >= 4 &&
-      !email.includes("example.com") &&
-      !password.includes("your_")
-  );
-}
+import {
+  hasShiprocketCredentials,
+  isShippingMockMode,
+} from "../shipping-mode";
 
 /**
- * Provider for serviceability / estimate (safe read APIs only).
- *
- * - SHIPPING_PROVIDER=mock → always mock
- * - SHIPPING_PROVIDER=shiprocket → Shiprocket when credentials exist
- * - unset → auto Shiprocket when credentials look real
- *
- * Note: SHIPPING_MOCK_MODE does NOT force estimate mock — that flag is reserved
- * for booking/create operations (see getBookingProvider).
+ * Provider for serviceability / estimate.
+ * Mock when SHIPROCKET_MOCK / SHIPPING_MOCK_MODE is true, or credentials missing.
  */
 export function getEstimateProvider(): IShippingProvider {
+  if (isShippingMockMode()) return mockShippingProvider;
+
   const named = process.env.SHIPPING_PROVIDER?.trim().toLowerCase();
   if (named === "mock") return mockShippingProvider;
   if (named === "shiprocket") {
@@ -34,28 +22,31 @@ export function getEstimateProvider(): IShippingProvider {
 }
 
 /**
- * Provider for createShipment / AWB / pickup / live track.
- *
- * Always Mock for now — never creates real Shiprocket shipments.
- * SHIPPING_MOCK_MODE=true documents/intent-locks this behavior.
- * Later: implement ShiprocketProvider.createShipment and allow
- * SHIPPING_BOOKING_PROVIDER=shiprocket when SHIPPING_MOCK_MODE=false.
+ * Provider for createShipment / AWB / live track.
+ * - Mock when SHIPROCKET_MOCK / SHIPPING_MOCK_MODE is true (default safe path)
+ * - Live Shiprocket when mock is false and credentials are configured
  */
 export function getBookingProvider(): IShippingProvider {
-  // Hard-guard until production go-live.
-  // SHIPPING_MOCK_MODE and SHIPPING_BOOKING_PROVIDER are intentionally ignored
-  // so nothing can accidentally create a live Shiprocket shipment.
-  void process.env.SHIPPING_MOCK_MODE;
-  void process.env.SHIPPING_BOOKING_PROVIDER;
-  return mockShippingProvider;
+  if (isShippingMockMode()) return mockShippingProvider;
+
+  const bookingNamed = process.env.SHIPPING_BOOKING_PROVIDER?.trim().toLowerCase();
+  if (bookingNamed === "mock") return mockShippingProvider;
+
+  if (!hasShiprocketCredentials()) {
+    return mockShippingProvider;
+  }
+
+  return shiprocketProvider;
 }
 
 export function getActiveProviders(): {
   estimate: ShippingProviderName;
   booking: ShippingProviderName;
+  mockMode: boolean;
 } {
   return {
     estimate: getEstimateProvider().name,
     booking: getBookingProvider().name,
+    mockMode: isShippingMockMode(),
   };
 }

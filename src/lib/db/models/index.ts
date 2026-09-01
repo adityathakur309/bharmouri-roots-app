@@ -7,6 +7,17 @@ export { Address, type IAddress } from "./address.model";
 export { Media, type IMedia } from "./media.model";
 export { Payment, type IPayment } from "./payment.model";
 export { Invoice, type IInvoice } from "./invoice.model";
-export { Review, type IReview } from "./review.model";
+export { Review, type IReview, type ReviewStatus } from "./review.model";
 export { Category, type ICategory } from "./category.model";
 export { Setting, type ISetting } from "./setting.model";
+export {
+  Coupon,
+  CouponRedemption,
+  type ICoupon,
+  type ICouponRedemption,
+} from "./coupon.model";
+export {
+  RefundRequest,
+  type IRefundRequest,
+  type RefundRequestStatus,
+} from "./refund-request.model";

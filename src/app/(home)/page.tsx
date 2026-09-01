@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useInView, useScroll, useTransform, type Variants } from "framer-motion";
 import {
@@ -9,13 +9,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCard } from "@/components/shared/product-card";
+import { CatalogImage } from "@/components/shared/catalog-image";
 import { EmptyState } from "@/components/shared/empty-state";
 import { categories as mockFallbackCategories, testimonials, heroSlides } from "@/lib/mock-data";
 import { ParentBrandSection } from "@/components/home/parent-brand-section";
 import { HeroParentBrandStrip } from "@/components/home/hero-parent-brand-strip";
 import { productApi } from "@/services/api";
 import { useCategories } from "@/hooks/use-categories";
+import { heroImage } from "@/lib/product-images";
 import type { Product } from "@/types/product";
 import type { Category } from "@/types/category";
 
@@ -27,6 +30,9 @@ const fadeUp: Variants = {
 const stagger = {
   visible: { transition: { staggerChildren: 0.1 } },
 };
+
+const HERO_FALLBACK = heroImage("mountains");
+const STORY_BANNER = heroImage("story-banner");
 
 function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle: string }) {
   const ref = useRef(null);
@@ -54,6 +60,37 @@ function SectionHeader({ badge, title, subtitle }: { badge: string; title: strin
   );
 }
 
+function ProductGridSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-2xl border bg-[hsl(var(--card))] overflow-hidden">
+          <Skeleton className="aspect-[4/3] sm:aspect-square w-full rounded-none" />
+          <div className="p-3 sm:p-4 space-y-2">
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-4 w-4/5" />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-5 w-1/3 mt-2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function pickFeatured(products: Product[], limit = 8): Product[] {
+  const featured = products.filter((p) => p.isFeatured);
+  return (featured.length ? featured : products).slice(0, limit);
+}
+
+function pickBestsellers(products: Product[], limit = 4): Product[] {
+  const bestsellers = products.filter((p) => p.isBestseller);
+  if (bestsellers.length) return bestsellers.slice(0, limit);
+  return [...products]
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || (b.reviews ?? 0) - (a.reviews ?? 0))
+    .slice(0, limit);
+}
+
 export default function HomePage() {
   const heroRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
@@ -61,15 +98,34 @@ export default function HomePage() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  const [heroSrc, setHeroSrc] = useState(heroSlides[0]?.image || HERO_FALLBACK);
   const { categories, loaded: categoriesLoaded } = useCategories();
 
-  useEffect(() => {
-    productApi
-      .list({ limit: 12 })
-      .then((res) => setCatalog(res.data ?? []))
-      .catch(() => setCatalog([]))
-      .finally(() => setProductsLoaded(true));
+  const loadProducts = useCallback(async () => {
+    setProductsLoaded(false);
+    try {
+      const [featuredRes, allRes] = await Promise.all([
+        productApi.list({ featured: true, limit: 12 }).catch(() => null),
+        productApi.list({ limit: 16, sort: "rating" }).catch(() => null),
+      ]);
+
+      const featured = featuredRes?.data ?? [];
+      const all = allRes?.data ?? [];
+      const byId = new Map<string, Product>();
+      for (const p of [...featured, ...all]) {
+        if (p?.id) byId.set(p.id, p);
+      }
+      setCatalog([...byId.values()]);
+    } catch {
+      setCatalog([]);
+    } finally {
+      setProductsLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
 
   const displayCategories: Category[] =
     categories.length > 0
@@ -85,26 +141,22 @@ export default function HomePage() {
           productCount: c.count,
         }));
 
-  const featuredProducts = (
-    catalog.filter((p) => p.isFeatured).length
-      ? catalog.filter((p) => p.isFeatured)
-      : catalog
-  ).slice(0, 8);
-  const bestsellerProducts = (
-    catalog.filter((p) => p.isBestseller).length
-      ? catalog.filter((p) => p.isBestseller)
-      : catalog
-  ).slice(0, 4);
+  const featuredProducts = pickFeatured(catalog, 8);
+  const bestsellerProducts = pickBestsellers(catalog, 4);
 
   return (
     <div className="overflow-hidden">
       {/* Hero Section */}
       <section ref={heroRef} className="relative min-h-[92vh] flex items-center overflow-hidden">
         <motion.div style={{ y: heroY }} className="absolute inset-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={heroSlides[0].image}
+            src={heroSrc}
             alt="Himalayan landscape"
             className="w-full h-full object-cover"
+            onError={() => {
+              if (heroSrc !== HERO_FALLBACK) setHeroSrc(HERO_FALLBACK);
+            }}
           />
           <div className="absolute inset-0 gradient-himalaya opacity-80" />
           <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-[hsl(var(--background))]/50" />
@@ -198,7 +250,7 @@ export default function HomePage() {
           {!categoriesLoaded ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="aspect-[4/3] rounded-2xl bg-[hsl(var(--muted))] animate-pulse" />
+                <Skeleton key={i} className="aspect-[4/3] rounded-2xl" />
               ))}
             </div>
           ) : displayCategories.length === 0 ? (
@@ -214,7 +266,13 @@ export default function HomePage() {
                 <motion.div key={cat.id || cat.slug} variants={fadeUp}>
                   <Link href={`/products?category=${cat.slug}`}>
                     <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">
-                      <img src={cat.image || "/og/default.png"} alt={cat.name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
+                      <CatalogImage
+                        src={cat.image}
+                        alt={cat.name}
+                        themeKey={cat.slug}
+                        variant="category"
+                        className="group-hover:scale-110 transition-transform duration-500"
+                      />
                       <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
                       <div className="absolute bottom-0 left-0 right-0 p-4">
                         <span className="text-2xl mb-1 block">{cat.icon || "🏔️"}</span>
@@ -239,7 +297,9 @@ export default function HomePage() {
       <section className="py-12 sm:py-20 bg-[hsl(var(--muted))]/30">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Featured Products" title="Our Best Sellers" subtitle="Handpicked products that our customers love the most — authentic, fresh, and premium quality" />
-          {productsLoaded && featuredProducts.length === 0 ? (
+          {!productsLoaded ? (
+            <ProductGridSkeleton count={8} />
+          ) : featuredProducts.length === 0 ? (
             <EmptyState
               compact
               title="Featured products coming soon"
@@ -268,7 +328,12 @@ export default function HomePage() {
       {/* Story Banner */}
       <section className="py-14 sm:py-24 relative overflow-hidden">
         <div className="absolute inset-0">
-          <img src="https://picsum.photos/seed/bh-story-banner/1600/900" alt="Himachal Pradesh mountains" className="w-full h-full object-cover" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={STORY_BANNER}
+            alt="Himachal Pradesh mountains"
+            className="w-full h-full object-cover"
+          />
           <div className="absolute inset-0 bg-linear-to-r from-[hsl(142,38%,15%)]/95 via-[hsl(142,38%,15%)]/80 to-transparent" />
         </div>
         <div className="relative container mx-auto px-4 max-w-7xl">
@@ -306,7 +371,9 @@ export default function HomePage() {
       <section className="py-20">
         <div className="container mx-auto px-4 max-w-7xl">
           <SectionHeader badge="Top Picks" title="Community Favorites" subtitle="Products loved and trusted by thousands of satisfied customers" />
-          {productsLoaded && bestsellerProducts.length === 0 ? (
+          {!productsLoaded ? (
+            <ProductGridSkeleton count={4} />
+          ) : bestsellerProducts.length === 0 ? (
             <EmptyState
               compact
               title="Bestsellers coming soon"
@@ -342,6 +409,7 @@ export default function HomePage() {
                 </div>
                 <p className="text-[hsl(var(--foreground))]/80 text-sm leading-relaxed mb-4 italic">&ldquo;{t.comment}&rdquo;</p>
                 <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover border-2 border-[hsl(var(--primary))]/30" />
                   <div>
                     <p className="font-semibold text-sm">{t.name}</p>

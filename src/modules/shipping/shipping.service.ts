@@ -6,9 +6,17 @@ import type {
   ShippingEstimateResult,
   ShipmentBookingResult,
   TrackingResult,
+  ScheduleReturnPickupInput,
+  ReturnPickupResult,
 } from "./providers/types";
 
-export type { ShippingEstimateResult, ShipmentBookingResult, TrackingResult };
+export type {
+  ShippingEstimateResult,
+  ShipmentBookingResult,
+  TrackingResult,
+  ScheduleReturnPickupInput,
+  ReturnPickupResult,
+};
 
 function pickupPincode(fallback?: string) {
   return (
@@ -121,6 +129,25 @@ export class ShippingService {
 
   async trackShipment(shipmentId: string): Promise<TrackingResult> {
     return getBookingProvider().trackShipment(shipmentId);
+  }
+
+  /** Schedule reverse pickup for an approved return (mock or Shiprocket). */
+  async scheduleReturnPickup(
+    input: ScheduleReturnPickupInput
+  ): Promise<ReturnPickupResult> {
+    const provider = getBookingProvider();
+    if (!provider.scheduleReturnPickup) {
+      throw new Error(
+        `Provider ${provider.name} does not support return pickup scheduling`
+      );
+    }
+    const result = await provider.scheduleReturnPickup(input);
+    logger.info("Return pickup scheduled", {
+      provider: result.provider,
+      pickupId: result.pickupId,
+      refundRequest: input.refundRequestNumber,
+    });
+    return result;
   }
 }
 

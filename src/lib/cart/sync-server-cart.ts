@@ -22,7 +22,7 @@ export async function pushLocalCartToServer(): Promise<{
       continue;
     }
     try {
-      await cartApi.addItem(item.product.id, item.quantity);
+      await cartApi.addItem(item.product.id, item.quantity, item.variantId);
       synced += item.quantity;
     } catch {
       skipped += item.quantity;

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { orderApi } from "@/services/api";
 import { orderStatusConfig, orderStatusImpact } from "@/lib/order-status";
 import { getAllowedOrderTransitions, canCreateShipment } from "@/lib/utils/order-transitions";
+import { ADMIN_ORDER_QUEUES, type AdminOrderQueue } from "@/lib/constants/admin-order-queues";
 import { useToast } from "@/hooks/use-toast";
 import { useListViewMode } from "@/hooks/use-list-view-mode";
 import { ViewModeToggle } from "@/components/shared/view-mode-toggle";
@@ -11,6 +12,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, Truck, Package, ShoppingBag, ChevronDown, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -155,17 +158,29 @@ function StatusBadgeMenu({
 
 export default function AdminOrdersPage() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [tab, setTab] = useState<AdminOrderQueue>("review");
   const [allOrders, setAllOrders] = useState<AdminOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState(false);
   const { viewMode, setViewMode } = useListViewMode();
   const { toast } = useToast();
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const loadOrders = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await orderApi.adminList({ limit: 100 });
+      const res = await orderApi.adminList({
+        limit: 100,
+        queue: tab === "all" ? undefined : tab,
+        search: debouncedSearch || undefined,
+      });
       const rows = mapApiOrders(
         (res.data ?? []) as Parameters<typeof mapApiOrders>[0]
       );
@@ -174,16 +189,17 @@ export default function AdminOrdersPage() {
     } catch {
       setAllOrders([]);
       setLoadError(true);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [tab, debouncedSearch]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount/load
     void loadOrders();
   }, [loadOrders]);
 
   useEffect(() => {
-    const onFocus = () => loadOrders();
+    const onFocus = () => void loadOrders();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [loadOrders]);
@@ -223,13 +239,7 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const filtered = allOrders.filter((o) => {
-    const matchSearch =
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || o.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const filtered = allOrders;
 
   const dialogCopy = (() => {
     if (!pending) return { title: "", description: "" };
@@ -285,10 +295,29 @@ export default function AdminOrdersPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">{allOrders.length} total orders</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            Amazon-style fulfillment queues — review → confirm → ship → deliver
+          </p>
         </div>
         <ViewModeToggle value={viewMode} onChange={setViewMode} />
       </div>
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as AdminOrderQueue)}>
+        <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0 mb-1">
+          {ADMIN_ORDER_QUEUES.map((q) => (
+            <TabsTrigger
+              key={q.id}
+              value={q.id}
+              className="rounded-xl border data-[state=active]:gradient-forest data-[state=active]:text-white px-3 py-2 text-xs sm:text-sm"
+            >
+              {q.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">
+          {ADMIN_ORDER_QUEUES.find((q) => q.id === tab)?.description}
+        </p>
+      </Tabs>
 
       {loadError ? (
         <EmptyState
@@ -297,13 +326,19 @@ export default function AdminOrdersPage() {
           description="Check your database connection, then try again."
           primaryAction={{ label: "Retry", onClick: () => void loadOrders() }}
         />
+      ) : loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-2xl" />
+          ))}
+        </div>
       ) : allOrders.length === 0 ? (
         <EmptyState
           icon={ShoppingBag}
-          title="No orders yet"
-          description="Orders will appear here after customers complete checkout."
-          primaryAction={{ label: "View storefront", href: "/products" }}
-          secondaryAction={{ label: "Refresh", onClick: () => void loadOrders(), variant: "outline" }}
+          title={`No orders in “${ADMIN_ORDER_QUEUES.find((q) => q.id === tab)?.label ?? tab}”`}
+          description="Try another queue or refresh when new orders arrive."
+          primaryAction={{ label: "Refresh", onClick: () => void loadOrders(), variant: "outline" }}
+          secondaryAction={{ label: "View all orders", onClick: () => setTab("all"), variant: "outline" }}
         />
       ) : (
         <>
@@ -313,27 +348,13 @@ export default function AdminOrdersPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search orders..."
+                placeholder="Search order # or customer..."
                 className="w-full pl-9 pr-4 py-2 rounded-xl border bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {["all", "confirmed", "processing", "shipped", "delivered", "cancelled"].map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setStatusFilter(s)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-sm font-medium transition-all capitalize min-h-9",
-                    statusFilter === s
-                      ? "gradient-forest text-white"
-                      : "bg-[hsl(var(--card))] border hover:bg-[hsl(var(--muted))]"
-                  )}
-                >
-                  {s === "all" ? "All" : orderStatusConfig[s]?.label ?? s}
-                </button>
-              ))}
-            </div>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] self-center">
+              {filtered.length} order{filtered.length === 1 ? "" : "s"} in this queue
+            </p>
           </div>
 
           {viewMode === "list" ? (

@@ -83,10 +83,45 @@ export interface TrackingResult {
   raw?: unknown;
 }
 
+export interface ScheduleReturnPickupInput {
+  orderNumber: string;
+  refundRequestNumber: string;
+  scheduledAt?: string;
+  scheduledSlot?: string;
+  customer: {
+    fullName: string;
+    phone: string;
+    email?: string;
+    addressLine: string;
+    city: string;
+    state: string;
+    pincode: string;
+  };
+  items: Array<{
+    name: string;
+    sku?: string;
+    units: number;
+    sellingPrice: number;
+  }>;
+  weight?: number;
+}
+
+export interface ReturnPickupResult {
+  provider: ShippingProviderName;
+  pickupId: string;
+  awbCode?: string;
+  trackingId?: string;
+  courierName?: string;
+  scheduledAt?: string;
+  status: string;
+  raw?: unknown;
+}
+
 export interface IShippingProvider {
   readonly name: ShippingProviderName;
   checkServiceability(params: ServiceabilityParams): Promise<unknown>;
   estimateShipping(params: ServiceabilityParams): Promise<ShippingEstimateResult>;
   createShipment(input: CreateShipmentInput): Promise<ShipmentBookingResult>;
   trackShipment(shipmentId: string): Promise<TrackingResult>;
+  scheduleReturnPickup?(input: ScheduleReturnPickupInput): Promise<ReturnPickupResult>;
 }

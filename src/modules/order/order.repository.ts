@@ -10,6 +10,8 @@ import type {
   AdminOrderListQueryInput,
   OrderListQueryInput,
 } from "@/lib/validators/order.validator";
+import { ADMIN_ORDER_QUEUE_STATUSES } from "@/lib/constants/admin-order-queues";
+import type { OrderStatus } from "@/types/order";
 
 const ORDER_SORT_MAP = {
   newest: { createdAt: -1 as const },
@@ -34,10 +36,16 @@ export class OrderRepository {
   }
 
   findAll(query: AdminOrderListQueryInput) {
-    const filter = {
-      ...buildEqualityFilter({ status: query.status }),
+    const filter: Record<string, unknown> = {
       ...buildSearchFilter(query.search, ["orderNumber"]),
     };
+
+    if (query.status) {
+      Object.assign(filter, buildEqualityFilter({ status: query.status }));
+    } else if (query.queue && query.queue !== "all") {
+      const statuses = ADMIN_ORDER_QUEUE_STATUSES[query.queue] as OrderStatus[];
+      filter.status = { $in: statuses };
+    }
 
     const sort = buildSort(query.sort, ORDER_SORT_MAP);
     const skip = getSkip(query.page, query.limit);

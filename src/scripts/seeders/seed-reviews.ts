@@ -12,7 +12,7 @@ export interface ReviewsSeedResult {
 async function syncProductRating(productId: string, session?: ClientSession) {
   const oid = new Types.ObjectId(productId);
   const rows = await Review.aggregate<{ _id: number; count: number }>([
-    { $match: { productId: oid, isActive: true } },
+    { $match: { productId: oid, isActive: true, status: "approved" } },
     { $group: { _id: "$rating", count: { $sum: 1 } } },
   ]).session(session ?? null);
 
@@ -62,18 +62,17 @@ export async function seedReviews(session?: ClientSession): Promise<ReviewsSeedR
     if (session) existingQuery.session(session);
     const already = await existingQuery;
 
+    const status = item.status ?? "approved";
+
     if (already) {
-      if (!already.isActive) {
-        already.isActive = true;
-        already.rating = item.rating;
-        already.comment = item.comment;
-        already.title = item.title;
-        already.isVerifiedPurchase = item.isVerifiedPurchase ?? false;
-        await already.save(session ? { session } : undefined);
-        created += 1;
-      } else {
-        existing += 1;
-      }
+      already.isActive = true;
+      already.rating = item.rating;
+      already.comment = item.comment;
+      already.title = item.title;
+      already.isVerifiedPurchase = item.isVerifiedPurchase ?? true;
+      already.status = status;
+      await already.save(session ? { session } : undefined);
+      existing += 1;
       touchedProductIds.add(String(product._id));
       continue;
     }
@@ -84,7 +83,8 @@ export async function seedReviews(session?: ClientSession): Promise<ReviewsSeedR
       rating: item.rating,
       comment: item.comment,
       title: item.title,
-      isVerifiedPurchase: item.isVerifiedPurchase ?? false,
+      isVerifiedPurchase: item.isVerifiedPurchase ?? true,
+      status,
       isActive: true,
     };
 

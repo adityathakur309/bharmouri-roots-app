@@ -12,6 +12,16 @@ const orderStatusEnum = z.enum([
   "cancelled",
 ]);
 
+const adminOrderQueueEnum = z.enum([
+  "all",
+  "review",
+  "confirmed",
+  "processing",
+  "shipped",
+  "delivered",
+  "cancelled",
+]);
+
 const addressInputSchema = z.object({
   fullName: z.string().min(2),
   phone: z.string().min(10),
@@ -44,6 +54,7 @@ export const orderListQuerySchema = paginationSchema.extend({
 
 export const adminOrderListQuerySchema = orderListQuerySchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  queue: adminOrderQueueEnum.optional(),
 });
 
 export type OrderListQueryInput = z.infer<typeof orderListQuerySchema>;

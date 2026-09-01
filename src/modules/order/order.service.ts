@@ -173,6 +173,7 @@ export class OrderService {
         productId: i.product.id,
         quantity: i.quantity,
         name: i.product.name,
+        variantId: (i as { variantId?: string }).variantId,
       }))
     );
 
@@ -215,12 +216,54 @@ export class OrderService {
       throw new ValidationError("Cart is empty");
     }
 
+    // Re-validate coupon at checkout — never trust a stale cart discount
+    let validatedCoupon: Awaited<
+      ReturnType<typeof import("@/modules/coupon/coupon.service").couponService.validateForUser>
+    > | null = null;
+    if (pricedCart.couponCode) {
+      try {
+        const { couponService } = await import("@/modules/coupon/coupon.service");
+        validatedCoupon = await couponService.validateForUser(
+          pricedCart.couponCode,
+          userId
+        );
+        // Align cart discount % with authoritative coupon record
+        if (validatedCoupon.discountPercent !== pricedCart.couponDiscount) {
+          await cartService.applyCoupon(userId, validatedCoupon.code);
+        }
+      } catch {
+        await cartService.removeCoupon(userId);
+        validatedCoupon = null;
+      }
+    }
+
+    const finalCart = await cartService.getCart(userId);
+    if (finalCart.items.length === 0) {
+      throw new ValidationError("Cart is empty");
+    }
+
+    if (input.paymentMethod === "cod") {
+      const { settingService } = await import("@/modules/settings/setting.service");
+      const codGloballyEnabled = await settingService.isCodGloballyEnabled();
+      if (!codGloballyEnabled) {
+        throw new ValidationError("Cash on Delivery is currently disabled");
+      }
+      const allAllowCod = finalCart.items.every(
+        (i) => Boolean((i.product as { codEnabled?: boolean }).codEnabled)
+      );
+      if (!allAllowCod) {
+        throw new ValidationError(
+          "Cash on Delivery is not available for one or more items in your cart"
+        );
+      }
+    }
+
     // Soft serviceability check (does not block if Shiprocket is down)
     try {
       const serviceable = await shippingService.isServiceable(
         String(shippingAddress.pincode),
         input.paymentMethod === "cod",
-        Math.max(0.5, pricedCart.itemCount * 0.25)
+        Math.max(0.5, finalCart.itemCount * 0.25)
       );
       if (!serviceable) {
         throw new ValidationError(
@@ -235,14 +278,28 @@ export class OrderService {
     }
 
     const orderNumber = `ORD-${new Date().getFullYear()}-${generateOrderNumber()}`;
-    const items = pricedCart.items.map((i) => ({
-      productId: new Types.ObjectId(i.product.id),
-      name: i.product.name,
-      slug: i.product.slug,
-      price: i.product.price,
-      quantity: i.quantity,
-      image: i.product.images[0] ?? "",
-    }));
+    const items = finalCart.items.map((i) => {
+      const line = i as {
+        product: typeof i.product;
+        quantity: number;
+        variantId?: string;
+        variantName?: string;
+      };
+      return {
+        productId: new Types.ObjectId(line.product.id),
+        name: line.product.name,
+        slug: line.product.slug,
+        price: line.product.price,
+        quantity: line.quantity,
+        image: line.product.images[0] ?? "",
+        ...(line.variantId && Types.ObjectId.isValid(line.variantId)
+          ? {
+              variantId: new Types.ObjectId(line.variantId),
+              variantName: line.variantName,
+            }
+          : {}),
+      };
+    });
 
     const isCod = input.paymentMethod === "cod";
     const status: OrderStatus = isCod ? "confirmed" : "payment_pending";
@@ -253,6 +310,7 @@ export class OrderService {
           productId: i.productId,
           quantity: i.quantity,
           name: i.name,
+          variantId: i.variantId,
         }))
       );
     }
@@ -265,11 +323,11 @@ export class OrderService {
       status,
       paymentMethod: input.paymentMethod,
       paymentStatus: "pending",
-      subtotal: pricedCart.subtotal,
-      discount: pricedCart.discountAmount,
-      shippingCharge: pricedCart.shipping,
-      total: pricedCart.total,
-      couponCode: pricedCart.couponCode,
+      subtotal: finalCart.subtotal,
+      discount: finalCart.discountAmount,
+      shippingCharge: finalCart.shipping,
+      total: finalCart.total,
+      couponCode: finalCart.couponCode,
       stockDecremented: isCod,
       ...(isCod && { confirmedAt: new Date() }),
     });
@@ -278,13 +336,23 @@ export class OrderService {
       await paymentService.createCodPaymentRecord(order, userId);
     }
 
+    if (validatedCoupon && finalCart.couponCode && finalCart.discountAmount > 0) {
+      const { couponService } = await import("@/modules/coupon/coupon.service");
+      await couponService.recordRedemption({
+        coupon: validatedCoupon,
+        userId,
+        orderId: String(order._id),
+        discountAmount: finalCart.discountAmount,
+      });
+    }
+
     await cartService.clearCart(userId);
 
     logger.info("Order created", {
       orderId: String(order._id),
       orderNumber,
       paymentMethod: input.paymentMethod,
-      total: pricedCart.total,
+      total: finalCart.total,
     });
 
     return mapOrder(order.toObject());
@@ -394,6 +462,7 @@ export class OrderService {
           productId: i.productId,
           quantity: i.quantity,
           name: i.name,
+          variantId: i.variantId,
         }))
       );
     }
@@ -491,9 +560,14 @@ export class OrderService {
             productId: i.productId,
             quantity: i.quantity,
             name: i.name,
+            variantId: i.variantId,
           }))
         );
         updates.stockDecremented = false;
+      }
+      if (order.couponCode) {
+        const { couponService } = await import("@/modules/coupon/coupon.service");
+        await couponService.restoreRedemptionForOrder(orderId);
       }
     }
 

@@ -1,6 +1,10 @@
 import { User, type IUser } from "@/lib/db/models";
 
 export class AuthRepository {
+  findByGoogleId(googleId: string) {
+    return User.findOne({ googleId });
+  }
+
   findByEmail(email: string) {
     return User.findOne({ email: email.toLowerCase() });
   }

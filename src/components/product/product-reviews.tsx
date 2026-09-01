@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Pencil, Star, Trash2 } from "lucide-react";
@@ -81,10 +81,19 @@ export function ProductReviews({
   );
   const [loading, setLoading] = useState(true);
   const [myReview, setMyReview] = useState<ReviewItem | null>(null);
+  const [canSubmit, setCanSubmit] = useState(false);
+  const [purchased, setPurchased] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Parent often passes an inline onSummaryChange — keep it out of effect deps
+  // to avoid fetch → setState → new callback → refetch loops.
+  const notifySummaryChange = useEffectEvent((summary: ReviewSummary) => {
+    onSummaryChange?.(summary);
+  });
 
   const loadReviews = useCallback(async () => {
     setLoading(true);
@@ -94,33 +103,38 @@ export function ProductReviews({
       const metaSummary = (res.meta as { summary?: ReviewSummary } | undefined)?.summary;
       if (metaSummary) {
         setSummary(metaSummary);
-        onSummaryChange?.(metaSummary);
+        notifySummaryChange(metaSummary);
       }
     } catch {
       setReviews([]);
     } finally {
       setLoading(false);
     }
-  }, [productIdOrSlug, onSummaryChange]);
+  }, [productIdOrSlug]);
 
-  const loadMine = useCallback(async () => {
+  const loadEligibility = useCallback(async () => {
     if (!isAuthenticated) {
       setMyReview(null);
+      setCanSubmit(false);
+      setPurchased(false);
       return;
     }
     try {
-      const res = await reviewApi.mine(productIdOrSlug);
-      setMyReview(res.data);
-      if (res.data) {
-        setRating(res.data.rating);
-        setComment(res.data.comment);
-        setEditingId(res.data.id);
+      const res = await reviewApi.eligibility(productIdOrSlug);
+      setCanSubmit(Boolean(res.data?.canSubmit));
+      setPurchased(Boolean(res.data?.purchased));
+      setMyReview(res.data?.myReview ?? null);
+      if (res.data?.myReview) {
+        setRating(res.data.myReview.rating);
+        setComment(res.data.myReview.comment);
+        setEditingId(res.data.myReview.id);
       } else {
         setEditingId(null);
         setRating(5);
         setComment("");
       }
     } catch {
+      setCanSubmit(false);
       setMyReview(null);
     }
   }, [isAuthenticated, productIdOrSlug]);
@@ -130,8 +144,8 @@ export function ProductReviews({
   }, [loadReviews]);
 
   useEffect(() => {
-    void loadMine();
-  }, [loadMine]);
+    void loadEligibility();
+  }, [loadEligibility]);
 
   const distributionPercents = useMemo(() => {
     const total = summary.total || 1;
@@ -157,15 +171,22 @@ export function ProductReviews({
     try {
       if (editingId && myReview) {
         await reviewApi.update(editingId, { rating, comment: comment.trim() });
-        toast({ title: "Review updated" });
+        toast({
+          title: "Review updated",
+          description: "Your changes will appear after admin approval.",
+        });
       } else {
         await reviewApi.create(productIdOrSlug, {
           rating,
           comment: comment.trim(),
         });
-        toast({ title: "Thank you for your review!" });
+        toast({
+          title: "Review submitted",
+          description: "Thanks! It will appear publicly after admin approval.",
+        });
       }
-      await Promise.all([loadReviews(), loadMine()]);
+      setShowForm(false);
+      await Promise.all([loadReviews(), loadEligibility()]);
     } catch (error) {
       const message =
         error && typeof error === "object" && "message" in error
@@ -185,7 +206,8 @@ export function ProductReviews({
     try {
       await reviewApi.remove(id);
       toast({ title: "Review deleted" });
-      await Promise.all([loadReviews(), loadMine()]);
+      setShowForm(false);
+      await Promise.all([loadReviews(), loadEligibility()]);
       setComment("");
       setRating(5);
       setEditingId(null);
@@ -194,122 +216,180 @@ export function ProductReviews({
     }
   };
 
+  const hasPublicReviews = summary.total > 0 || reviews.length > 0;
+  const showAddAction = isAuthenticated
+    ? canSubmit || (myReview && (myReview.status === "pending" || myReview.status === "rejected"))
+    : true;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-6 p-5 bg-[hsl(var(--muted))]/30 rounded-2xl mb-6">
-        <div className="text-center">
-          <div className="text-5xl font-bold text-[hsl(var(--primary))]">
-            {summary.average.toFixed(1)}
+      {/* Only show summary/list chrome when there are approved public reviews */}
+      {hasPublicReviews && (
+        <div className="flex items-center gap-6 p-5 bg-[hsl(var(--muted))]/30 rounded-2xl mb-2">
+          <div className="text-center">
+            <div className="text-5xl font-bold text-[hsl(var(--primary))]">
+              {summary.average.toFixed(1)}
+            </div>
+            <div className="flex items-center gap-0.5 justify-center my-1">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  className={cn(
+                    "w-4 h-4",
+                    i < Math.floor(summary.average)
+                      ? "fill-amber-400 text-amber-400"
+                      : "text-gray-300"
+                  )}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              {summary.total} reviews
+            </p>
           </div>
-          <div className="flex items-center gap-0.5 justify-center my-1">
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                className={cn(
-                  "w-4 h-4",
-                  i < Math.floor(summary.average)
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-gray-300"
-                )}
-              />
+          <div className="flex-1 space-y-1">
+            {distributionPercents.map(({ rating: r, percent }) => (
+              <div key={r} className="flex items-center gap-2">
+                <span className="text-xs w-4">{r}</span>
+                <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--muted))]">
+                  <div
+                    className="h-full rounded-full bg-amber-400 transition-all"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </div>
             ))}
           </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            {summary.total} reviews
-          </p>
         </div>
-        <div className="flex-1 space-y-1">
-          {distributionPercents.map(({ rating: r, percent }) => (
-            <div key={r} className="flex items-center gap-2">
-              <span className="text-xs w-4">{r}</span>
-              <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--muted))]">
-                <div
-                  className="h-full rounded-full bg-amber-400 transition-all"
-                  style={{ width: `${percent}%` }}
+      )}
+
+      {/* Eligible Add Review / status of own review */}
+      {showAddAction && (
+        <div className="p-5 border rounded-2xl">
+          {!isAuthenticated ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              <Link
+                href={`/login?callbackUrl=/products/${productIdOrSlug}`}
+                className="font-semibold text-[hsl(var(--primary))] hover:underline"
+              >
+                Sign in
+              </Link>{" "}
+              after purchasing to leave a review.
+            </p>
+          ) : myReview ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm">Your review</h3>
+                <Badge
+                  variant={
+                    myReview.status === "approved"
+                      ? "green"
+                      : myReview.status === "rejected"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                  className="capitalize text-[10px]"
+                >
+                  {myReview.status ?? "pending"}
+                </Badge>
+              </div>
+              {myReview.status === "pending" && (
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Waiting for admin approval — not visible publicly yet.
+                </p>
+              )}
+              {myReview.status === "rejected" && (
+                <p className="text-xs text-red-600">
+                  Rejected{myReview.rejectionReason ? `: ${myReview.rejectionReason}` : ""}. You
+                  can edit and resubmit.
+                </p>
+              )}
+              {!showForm ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    onClick={() => {
+                      setShowForm(true);
+                      setEditingId(myReview.id);
+                      setRating(myReview.rating);
+                      setComment(myReview.comment);
+                    }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-destructive"
+                    onClick={() => void handleDelete(myReview.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : canSubmit ? (
+            !showForm ? (
+              <Button type="button" size="sm" onClick={() => setShowForm(true)}>
+                Add Review
+              </Button>
+            ) : null
+          ) : (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              {purchased
+                ? "You already reviewed this product."
+                : "Only customers who purchased this product can leave a review."}
+            </p>
+          )}
+
+          {showForm && isAuthenticated && (canSubmit || myReview) && (
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div>
+                <Label className="mb-2 block text-xs">Rating</Label>
+                <StarPicker value={rating} onChange={setRating} />
+              </div>
+              <div>
+                <Label htmlFor="review-comment" className="mb-2 block text-xs">
+                  Comment
+                </Label>
+                <textarea
+                  id="review-comment"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Share your experience with this product..."
+                  className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] bg-[hsl(var(--background))] resize-y min-h-[80px]"
+                  required
                 />
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Write / edit form */}
-      <div className="p-5 border rounded-2xl mb-2">
-        {isAuthenticated ? (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-sm">
-                {myReview ? "Your review" : "Write a review"}
-              </h3>
-              {myReview && (
-                <Badge variant="secondary" className="text-[10px]">
-                  You reviewed this
-                </Badge>
-              )}
-            </div>
-            <div>
-              <Label className="mb-2 block text-xs">Rating</Label>
-              <StarPicker value={rating} onChange={setRating} />
-            </div>
-            <div>
-              <Label htmlFor="review-comment" className="mb-2 block text-xs">
-                Comment
-              </Label>
-              <textarea
-                id="review-comment"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                maxLength={2000}
-                placeholder="Share your experience with this product..."
-                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] bg-[hsl(var(--background))] resize-y min-h-[80px]"
-                required
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="sm" disabled={submitting}>
-                {submitting
-                  ? "Saving..."
-                  : myReview
-                    ? "Update Review"
-                    : "Submit Review"}
-              </Button>
-              {myReview && (
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" disabled={submitting}>
+                  {submitting ? "Saving..." : myReview ? "Resubmit Review" : "Submit Review"}
+                </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="gap-1 text-destructive"
-                  onClick={() => void handleDelete(myReview.id)}
+                  onClick={() => setShowForm(false)}
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                  Cancel
                 </Button>
-              )}
-            </div>
-          </form>
-        ) : (
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            <Link
-              href={`/login?callbackUrl=/products/${productIdOrSlug}`}
-              className="font-semibold text-[hsl(var(--primary))] hover:underline"
-            >
-              Sign in
-            </Link>{" "}
-            to write a review.
-          </p>
-        )}
-      </div>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
           <Skeleton className="h-28 w-full rounded-2xl" />
-          <Skeleton className="h-28 w-full rounded-2xl" />
         </div>
-      ) : reviews.length === 0 ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">
-          No reviews yet. Be the first to share your thoughts!
-        </p>
-      ) : (
+      ) : hasPublicReviews ? (
         reviews.map((review) => (
           <motion.div
             key={review.id}
@@ -319,6 +399,7 @@ export function ProductReviews({
             className="p-5 border rounded-2xl"
           >
             <div className="flex items-start gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={review.avatar}
                 alt={review.name}
@@ -352,9 +433,7 @@ export function ProductReviews({
                 {review.title && (
                   <p className="text-sm font-medium mb-1">{review.title}</p>
                 )}
-                <p className="text-sm text-[hsl(var(--foreground))]/80">
-                  {review.comment}
-                </p>
+                <p className="text-sm text-[hsl(var(--foreground))]/80">{review.comment}</p>
                 {(user?.id === review.userId || isAdmin) && (
                   <div className="flex gap-2 mt-3">
                     {user?.id === review.userId && (
@@ -364,6 +443,7 @@ export function ProductReviews({
                         variant="ghost"
                         className="h-7 px-2 text-xs gap-1"
                         onClick={() => {
+                          setShowForm(true);
                           setEditingId(review.id);
                           setRating(review.rating);
                           setComment(review.comment);
@@ -388,7 +468,7 @@ export function ProductReviews({
             </div>
           </motion.div>
         ))
-      )}
+      ) : null}
     </div>
   );
 }

@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { orderApi, addressApi } from "@/services/api";
+import { orderApi, addressApi, settingsApi } from "@/services/api";
 import { MockPaymentDialog } from "@/components/checkout/mock-payment-dialog";
 import { isBuyNowActive } from "@/lib/cart/buy-now";
 
@@ -71,6 +71,7 @@ export default function CheckoutPage() {
 
   const [step, setStep] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("upi");
+  const [codAllowed, setCodAllowed] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState("");
   const [placedOrderNumber, setPlacedOrderNumber] = useState("");
@@ -106,6 +107,32 @@ export default function CheckoutPage() {
       }));
     }
   }, [user]);
+
+  // COD: global setting AND every cart product must explicitly allow COD
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi
+      .getPublic()
+      .then((res) => {
+        if (cancelled) return;
+        const globalOn = Boolean(res.data?.codEnabled);
+        const allProductsCod =
+          items.length > 0 &&
+          items.every((item) => Boolean(item.product.codEnabled));
+        const allowed = globalOn && allProductsCod;
+        setCodAllowed(allowed);
+        setPaymentMethod((prev) => (prev === "cod" && !allowed ? "upi" : prev));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCodAllowed(false);
+          setPaymentMethod((prev) => (prev === "cod" ? "upi" : prev));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   // After login / cart sync, keep Buy Now as a single-product checkout cart.
   useEffect(() => {
@@ -183,6 +210,9 @@ export default function CheckoutPage() {
 
   const selectedPayment = paymentMethods.find((m) => m.id === paymentMethod);
   const apiPaymentMethod = selectedPayment?.api ?? "razorpay";
+  const visiblePaymentMethods = paymentMethods.filter(
+    (m) => m.id !== "cod" || codAllowed
+  );
 
   const validateAddress = () => {
     if (
@@ -573,7 +603,7 @@ export default function CheckoutPage() {
                       <CreditCard className="w-5 h-5 text-[hsl(var(--primary))]" /> Payment Method
                     </h2>
                     <motion.div className="space-y-3">
-                      {paymentMethods.map((method) => (
+                      {visiblePaymentMethods.map((method) => (
                         <label
                           key={method.id}
                           className={cn(

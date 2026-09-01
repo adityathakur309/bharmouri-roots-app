@@ -3,16 +3,41 @@ import { NotFoundError, ValidationError } from "@/lib/utils/errors";
 import { cartRepository } from "./cart.repository";
 import { normalizeProductImages } from "@/lib/utils/image-url";
 import { Types } from "mongoose";
-
-const VALID_COUPONS: Record<string, number> = {
-  HIMALAYA10: 10,
-  BHARMOUR15: 15,
-  ORGANIC20: 20,
-  WELCOME5: 5,
-};
+import { couponService } from "@/modules/coupon/coupon.service";
 
 const FREE_SHIPPING_THRESHOLD = 999;
 const DEFAULT_SHIPPING = 80;
+
+function effectiveVariantPrice(v: {
+  price: number;
+  salePrice?: number | null;
+}): number {
+  if (v.salePrice !== undefined && v.salePrice !== null && v.salePrice > 0) {
+    return v.salePrice;
+  }
+  return v.price;
+}
+
+function findVariant(
+  product: {
+    variants?: Array<{
+      _id?: Types.ObjectId;
+      name: string;
+      price: number;
+      salePrice?: number;
+      stock: number;
+      weight?: string;
+      isActive?: boolean;
+    }>;
+  },
+  variantId?: string | Types.ObjectId | null
+) {
+  if (!variantId || !product.variants?.length) return null;
+  const id = String(variantId);
+  return (
+    product.variants.find((v) => String(v._id) === id && v.isActive !== false) ?? null
+  );
+}
 
 export class CartService {
   private async getPopulatedCart(userId: string) {
@@ -26,21 +51,40 @@ export class CartService {
     return this.formatCart(cart);
   }
 
-  async addItem(userId: string, productId: string, quantity: number) {
+  async addItem(
+    userId: string,
+    productId: string,
+    quantity: number,
+    variantId?: string
+  ) {
     const product = await Product.findById(productId);
     if (!product || !product.isActive) throw new NotFoundError("Product not found");
-    if (product.stock < quantity) throw new ValidationError("Insufficient stock");
+
+    const variant = findVariant(product, variantId);
+    if (variantId && !variant) {
+      throw new ValidationError("Selected variant is unavailable");
+    }
+
+    const available = variant ? variant.stock : product.stock;
+    if (available < quantity) throw new ValidationError("Insufficient stock");
 
     const cart = await cartRepository.findOrCreate(userId);
-    const existing = cart.items.find((i) => i.productId.toString() === productId);
+    const existing = cart.items.find((i) => {
+      const sameProduct = i.productId.toString() === productId;
+      const sameVariant =
+        String(i.variantId ?? "") === String(variantId ?? "");
+      return sameProduct && sameVariant;
+    });
 
     if (existing) {
-      const newQty = Math.min(existing.quantity + quantity, product.stock);
-      existing.quantity = newQty;
+      existing.quantity = Math.min(existing.quantity + quantity, available);
     } else {
       cart.items.push({
         productId: new Types.ObjectId(productId),
         quantity,
+        ...(variantId && Types.ObjectId.isValid(variantId)
+          ? { variantId: new Types.ObjectId(variantId) }
+          : {}),
       });
     }
 
@@ -49,17 +93,33 @@ export class CartService {
     return this.formatCart(cart);
   }
 
-  async updateItem(userId: string, productId: string, quantity: number) {
+  async updateItem(
+    userId: string,
+    productId: string,
+    quantity: number,
+    variantId?: string | null
+  ) {
     const cart = await cartRepository.findOrCreate(userId);
+    const match = (i: { productId: Types.ObjectId; variantId?: Types.ObjectId }) => {
+      const sameProduct = i.productId.toString() === productId;
+      const sameVariant =
+        String(i.variantId ?? "") === String(variantId ?? "");
+      return sameProduct && sameVariant;
+    };
 
     if (quantity === 0) {
-      cart.items = cart.items.filter((i) => i.productId.toString() !== productId);
+      cart.items = cart.items.filter((i) => !match(i));
     } else {
       const product = await Product.findById(productId);
       if (!product) throw new NotFoundError("Product not found");
-      if (quantity > product.stock) throw new ValidationError("Insufficient stock");
+      const variant = findVariant(product, variantId);
+      if (variantId && !variant) {
+        throw new ValidationError("Selected variant is unavailable");
+      }
+      const available = variant ? variant.stock : product.stock;
+      if (quantity > available) throw new ValidationError("Insufficient stock");
 
-      const item = cart.items.find((i) => i.productId.toString() === productId);
+      const item = cart.items.find((i) => match(i));
       if (!item) throw new NotFoundError("Item not in cart");
       item.quantity = quantity;
     }
@@ -79,12 +139,11 @@ export class CartService {
   }
 
   async applyCoupon(userId: string, code: string) {
-    const discount = VALID_COUPONS[code.toUpperCase()];
-    if (!discount) throw new ValidationError("Invalid coupon code");
+    const coupon = await couponService.validateForUser(code, userId);
 
     const cart = await cartRepository.findOrCreate(userId);
-    cart.couponCode = code.toUpperCase();
-    cart.couponDiscount = discount;
+    cart.couponCode = coupon.code;
+    cart.couponDiscount = coupon.discountPercent;
     await cart.save();
     await cart.populate("items.productId");
     return this.formatCart(cart);
@@ -116,14 +175,32 @@ export class CartService {
           rating: number;
           reviews: number;
           origin: string;
+          codEnabled?: boolean;
+          variants?: Array<{
+            _id: Types.ObjectId;
+            name: string;
+            price: number;
+            salePrice?: number;
+            stock: number;
+            weight?: string;
+            isActive?: boolean;
+          }>;
         };
+
+        const variant = findVariant(p, i.variantId);
+        const unitPrice = variant
+          ? effectiveVariantPrice(variant)
+          : p.price;
+        const stock = variant ? variant.stock : p.stock;
+        const displayName = variant ? `${p.name} (${variant.name})` : p.name;
+
         return {
           product: {
             id: p._id.toString(),
-            name: p.name,
+            name: displayName,
             slug: p.slug,
-            price: p.price,
-            stock: p.stock,
+            price: unitPrice,
+            stock,
             images: normalizeProductImages(p.images),
             category: p.category,
             categorySlug: p.categorySlug,
@@ -131,8 +208,11 @@ export class CartService {
             rating: p.rating,
             reviews: p.reviews,
             origin: p.origin,
+            codEnabled: Boolean(p.codEnabled),
           },
           quantity: i.quantity,
+          variantId: i.variantId ? String(i.variantId) : undefined,
+          variantName: variant?.name,
         };
       });
 

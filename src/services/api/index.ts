@@ -10,3 +10,8 @@ export { shippingApi } from "./shipping.service";
 export { userApi } from "./user.service";
 export { reviewApi } from "./review.service";
 export type { ReviewItem, ReviewSummary } from "./review.service";
+export { settingsApi } from "./settings.service";
+export { couponApi } from "./coupon.service";
+export type { Coupon } from "./coupon.service";
+export { refundApi } from "./refund.service";
+export type { RefundRequestItem, RefundStatus } from "./refund.service";

@@ -12,6 +12,8 @@ export interface IOrderItem {
   price: number;
   quantity: number;
   image: string;
+  variantId?: Types.ObjectId;
+  variantName?: string;
 }
 
 export interface IOrderAddress {
@@ -73,6 +75,8 @@ const orderItemSchema = new Schema<IOrderItem>(
     price: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },
     image: { type: String, required: true },
+    variantId: { type: Schema.Types.ObjectId },
+    variantName: String,
   },
   { _id: false }
 );

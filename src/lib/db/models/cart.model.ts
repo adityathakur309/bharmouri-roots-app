@@ -3,6 +3,8 @@ import mongoose, { Schema, type Document, type Model, Types } from "mongoose";
 export interface ICartItem {
   productId: Types.ObjectId;
   quantity: number;
+  /** Optional product variant ObjectId (string form when lean). */
+  variantId?: Types.ObjectId;
 }
 
 export interface ICart extends Document {
@@ -18,6 +20,7 @@ const cartItemSchema = new Schema<ICartItem>(
   {
     productId: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     quantity: { type: Number, required: true, min: 1, default: 1 },
+    variantId: { type: Schema.Types.ObjectId },
   },
   { _id: false }
 );

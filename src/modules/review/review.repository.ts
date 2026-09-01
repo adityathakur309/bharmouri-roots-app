@@ -5,7 +5,10 @@ import {
   getSkip,
   type SortDirection,
 } from "@/lib/utils/query";
-import type { ReviewListQueryInput } from "@/lib/validators/review.validator";
+import type {
+  ReviewListQueryInput,
+  AdminReviewQueryInput,
+} from "@/lib/validators/review.validator";
 
 const REVIEW_SORT_MAP: Record<string, Record<string, SortDirection>> = {
   newest: { createdAt: -1 },
@@ -16,9 +19,10 @@ const REVIEW_SORT_MAP: Record<string, Record<string, SortDirection>> = {
 
 export class ReviewRepository {
   findByProduct(productId: string, query: ReviewListQueryInput) {
-    const filter = {
+    const filter: Record<string, unknown> = {
       productId: new Types.ObjectId(productId),
       isActive: true,
+      $or: [{ status: "approved" }, { status: { $exists: false } }],
     };
     const sort = buildSort(query.sort, REVIEW_SORT_MAP);
     const skip = getSkip(query.page, query.limit);
@@ -34,8 +38,35 @@ export class ReviewRepository {
     ]);
   }
 
+  findAdmin(query: AdminReviewQueryInput) {
+    const filter: Record<string, unknown> = { isActive: true };
+    if (query.status && query.status !== "all") {
+      filter.status = query.status;
+    }
+    if (query.search) {
+      filter.$or = [
+        { comment: { $regex: query.search, $options: "i" } },
+        { title: { $regex: query.search, $options: "i" } },
+      ];
+    }
+    const skip = getSkip(query.page, query.limit);
+    return Promise.all([
+      Review.find(filter)
+        .populate("userId", "name email avatar")
+        .populate("productId", "name slug images")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(query.limit)
+        .lean(),
+      Review.countDocuments(filter),
+    ]);
+  }
+
   findById(id: string) {
-    return Review.findById(id).populate("userId", "name avatar").lean();
+    return Review.findById(id)
+      .populate("userId", "name avatar email")
+      .populate("productId", "name slug images")
+      .lean();
   }
 
   findByUserAndProduct(userId: string, productId: string) {
@@ -51,7 +82,8 @@ export class ReviewRepository {
 
   update(id: string, data: Partial<IReview>) {
     return Review.findByIdAndUpdate(id, data, { new: true })
-      .populate("userId", "name avatar")
+      .populate("userId", "name avatar email")
+      .populate("productId", "name slug images")
       .lean();
   }
 
@@ -68,6 +100,7 @@ export class ReviewRepository {
         $match: {
           productId: new Types.ObjectId(productId),
           isActive: true,
+          $or: [{ status: "approved" }, { status: { $exists: false } }],
         },
       },
       { $group: { _id: "$rating", count: { $sum: 1 } } },

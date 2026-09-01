@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Leaf, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,21 +11,66 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { resolvePostLoginPath } from "@/lib/auth-routes";
 import { useToast } from "@/hooks/use-toast";
+import { authApi } from "@/services/api";
+import { AuthTermsConsent } from "@/components/auth/auth-terms-consent";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const { login } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    authApi.getProviders().then((res) => setGoogleEnabled(Boolean(res.data?.google))).catch(() => {});
+    const err = searchParams.get("error");
+    if (err) {
+      const messages: Record<string, string> = {
+        google_not_configured: "Google sign-in is not configured yet.",
+        google_denied: "Google sign-in was cancelled.",
+        google_invalid_state: "Google sign-in expired. Please try again.",
+        google_auth_failed: "Google sign-in failed. Please try again.",
+      };
+      toast({
+        title: messages[err] ?? "Sign-in failed",
+        variant: "destructive",
+      });
+    }
+  }, [searchParams, toast]);
+
   const getCallbackUrl = () => {
     if (typeof window === "undefined") return "/";
-    return new URLSearchParams(window.location.search).get("callbackUrl") ?? "/";
+    return searchParams.get("callbackUrl") ?? "/";
+  };
+
+  const handleGoogleLogin = () => {
+    if (!acceptedTerms) {
+      toast({
+        title: "Please accept Terms & Conditions",
+        description: "Read and agree to our Terms and Privacy Policy to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const callbackUrl = encodeURIComponent(getCallbackUrl());
+    window.location.href = `/api/auth/google?callbackUrl=${callbackUrl}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!acceptedTerms) {
+      toast({
+        title: "Please accept Terms & Conditions",
+        description: "Read and agree to our Terms and Privacy Policy to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!email || !password) { toast({ title: "Please fill all fields", variant: "destructive" }); return; }
     setIsLoading(true);
     const callbackUrl = getCallbackUrl();
@@ -136,7 +181,18 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" size="lg" className="w-full gap-2" disabled={isLoading}>
+            <AuthTermsConsent
+              id="login-terms"
+              checked={acceptedTerms}
+              onCheckedChange={setAcceptedTerms}
+            />
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full gap-2"
+              disabled={isLoading || !acceptedTerms}
+            >
               {isLoading ? (
                 <>
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
@@ -157,20 +213,27 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button type="button" variant="outline" className="gap-2" disabled title="JWT login only">
-              🌐 Google
-            </Button>
-            <Button type="button" variant="outline" className="gap-2" disabled title="Coming soon">
-              📘 Facebook
+          <div className="grid grid-cols-1 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 w-full"
+              disabled={!googleEnabled || !acceptedTerms}
+              onClick={handleGoogleLogin}
+              title={
+                !acceptedTerms
+                  ? "Accept Terms & Conditions to continue"
+                  : googleEnabled
+                    ? "Continue with Google"
+                    : "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"
+              }
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>
+                <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-1.6 3.5-5.1 3.5-3.1 0-5.6-2.6-5.6-5.8S8.9 5.7 12 5.7c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.9 3.4 14.7 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12s4.3 9.5 9.5 9.5c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.5H12z" />
+              </svg>
+              Continue with Google
             </Button>
           </div>
-
-          <p className="text-center text-xs text-[hsl(var(--muted-foreground))] mt-6">
-            By signing in, you agree to our{" "}
-            <Link href="/terms" className="hover:underline text-[hsl(var(--primary))]">Terms</Link> and{" "}
-            <Link href="/privacy" className="hover:underline text-[hsl(var(--primary))]">Privacy Policy</Link>
-          </p>
         </motion.div>
       </div>
     </div>

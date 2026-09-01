@@ -15,15 +15,25 @@ export class CartController {
 
   async addItem(request: AuthenticatedRequest) {
     const body = await parseJsonBody(request);
-    const { productId, quantity } = addToCartSchema.parse(body);
-    const cart = await cartService.addItem(request.user.id, productId, quantity);
+    const { productId, quantity, variantId } = addToCartSchema.parse(body);
+    const cart = await cartService.addItem(
+      request.user.id,
+      productId,
+      quantity,
+      variantId
+    );
     return successResponse(cart, { message: "Added to cart" });
   }
 
   async updateItem(request: AuthenticatedRequest) {
     const body = await parseJsonBody(request);
-    const { productId, quantity } = updateCartItemSchema.parse(body);
-    const cart = await cartService.updateItem(request.user.id, productId, quantity);
+    const { productId, quantity, variantId } = updateCartItemSchema.parse(body);
+    const cart = await cartService.updateItem(
+      request.user.id,
+      productId,
+      quantity,
+      variantId
+    );
     return successResponse(cart, { message: "Cart updated" });
   }
 

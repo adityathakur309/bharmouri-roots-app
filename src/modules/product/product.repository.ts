@@ -1,4 +1,4 @@
-import { Product, type IProduct } from "@/lib/db/models";
+import { Product } from "@/lib/db/models";
 import {
   buildEqualityFilter,
   buildSort,
@@ -65,11 +65,11 @@ export class ProductRepository {
     return Product.findOne({ slug, isActive: true }).lean();
   }
 
-  create(data: Partial<IProduct>) {
+  create(data: Record<string, unknown>) {
     return Product.create(data);
   }
 
-  update(id: string, data: Partial<IProduct>) {
+  update(id: string, data: Record<string, unknown>) {
     return Product.findByIdAndUpdate(id, data, { new: true }).lean();
   }
 

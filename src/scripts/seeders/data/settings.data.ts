@@ -1,4 +1,5 @@
 import { ROLE_PERMISSIONS, type AppRole, type Permission } from "@/lib/rbac";
+import { getBusinessSeedSettings } from "./business-settings.data";
 
 export interface SeedSetting {
   key: string;
@@ -29,12 +30,7 @@ const PERMISSION_CATALOG: Array<{ key: Permission; description: string }> = [
 /** Build default app settings (env-aware values resolved at call time). */
 export function getSeedSettings(): SeedSetting[] {
   return [
-    {
-      key: "site.name",
-      value: "BharmouriRoots",
-      group: "general",
-      description: "Public site / brand name",
-    },
+    ...getBusinessSeedSettings(),
     {
       key: "site.currency",
       value: "INR",
@@ -61,7 +57,7 @@ export function getSeedSettings(): SeedSetting[] {
     },
     {
       key: "email.from",
-      value: process.env.EMAIL_FROM || "noreply@bharmouriroots.in",
+      value: process.env.EMAIL_FROM || "noreply@bharmouriroots.com",
       group: "email",
       description: "Default From address for transactional email",
     },
@@ -70,12 +66,6 @@ export function getSeedSettings(): SeedSetting[] {
       value: process.env.EMAIL_PROVIDER || "none",
       group: "email",
       description: "Configured email provider hint",
-    },
-    {
-      key: "shipping.free_above",
-      value: 999,
-      group: "commerce",
-      description: "Free shipping cart threshold (INR)",
     },
     {
       key: "rbac.roles",

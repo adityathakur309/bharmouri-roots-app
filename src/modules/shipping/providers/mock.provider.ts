@@ -145,6 +145,24 @@ export class MockShippingProvider implements IShippingProvider {
       ],
     };
   }
+
+  async scheduleReturnPickup(
+    input: import("./types").ScheduleReturnPickupInput
+  ): Promise<import("./types").ReturnPickupResult> {
+    await new Promise((r) => setTimeout(r, 150));
+    const pickupId = `RP-MOCK-${trackingAlphabet()}`;
+    const trackingId = `RET${trackingAlphabet()}`;
+    return {
+      provider: "mock",
+      pickupId,
+      awbCode: trackingId,
+      trackingId,
+      courierName: "Himalaya Express Returns",
+      scheduledAt: input.scheduledAt ?? new Date(Date.now() + 86400000).toISOString(),
+      status: "pickup_scheduled",
+      raw: { mock: true, request: input.refundRequestNumber },
+    };
+  }
 }
 
 export const mockShippingProvider = new MockShippingProvider();
