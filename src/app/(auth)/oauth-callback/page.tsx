@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Leaf } from "lucide-react";
 import { authApi } from "@/services/api";
@@ -8,7 +8,7 @@ import { setStoredToken } from "@/services/api/client";
 import { useAuthStore } from "@/stores/auth-store";
 import { resolvePostLoginPath } from "@/lib/auth-routes";
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setSession = useAuthStore((s) => s.setSession);
@@ -66,5 +66,13 @@ export default function OAuthCallbackPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function OAuthCallbackPageRoute() {
+  return (
+    <Suspense>
+      <OAuthCallbackPage />
+    </Suspense>
   );
 }

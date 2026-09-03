@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { authApi } from "@/services/api";
 import { AuthTermsConsent } from "@/components/auth/auth-terms-consent";
 
-export default function LoginPage() {
+function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -305,5 +305,13 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPageRoute() {
+  return (
+    <Suspense>
+      <LoginPage />
+    </Suspense>
   );
 }
