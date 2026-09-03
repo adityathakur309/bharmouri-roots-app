@@ -7,6 +7,7 @@ export interface AuthUser {
   role: "user" | "admin";
   avatar?: string;
   phone?: string;
+  mfaEnabled?: boolean;
 }
 
 export interface AuthResponse {
@@ -14,20 +15,41 @@ export interface AuthResponse {
   accessToken: string;
 }
 
-export const authApi = {
-  /** Step 1 — send verify / complete-registration email */
-  startRegistration: (email: string) =>
-    apiRequest<{ message: string; email: string }>("post", "/auth/register/start", {
-      email,
-    }),
+export type LoginResult =
+  | (AuthResponse & { requiresMfa: false })
+  | {
+      requiresMfa: true;
+      mfaToken: string;
+      email: string;
+      maskedEmail: string;
+      message: string;
+    };
 
-  /** Step 2 — create account after email link */
+export const authApi = {
+  /** Step 1 — send registration OTP */
+  startRegistration: (email: string) =>
+    apiRequest<{ message: string; email: string; maskedEmail: string }>(
+      "post",
+      "/auth/register/start",
+      { email }
+    ),
+
+  /** Step 1b — verify registration OTP → registration token */
+  verifyRegistrationOtp: (data: { email: string; code: string }) =>
+    apiRequest<{ message: string; email: string; token: string }>(
+      "post",
+      "/auth/register/verify-otp",
+      data
+    ),
+
+  /** Step 2 — create account after email verification */
   completeRegistration: async (data: {
     name: string;
     email: string;
     password: string;
     token: string;
     phone?: string;
+    mfaEnabled?: boolean;
   }) => {
     const res = await apiRequest<AuthResponse>("post", "/auth/register/complete", data);
     setStoredToken(res.data.accessToken);
@@ -42,14 +64,22 @@ export const authApi = {
   },
 
   login: async (data: { email: string; password: string }) => {
-    const res = await apiRequest<AuthResponse>("post", "/auth/login", data);
+    const res = await apiRequest<LoginResult>("post", "/auth/login", data);
+    if (!res.data.requiresMfa) {
+      setStoredToken(res.data.accessToken);
+    }
+    return res.data;
+  },
+
+  verifyLoginOtp: async (data: { mfaToken: string; code: string }) => {
+    const res = await apiRequest<AuthResponse>("post", "/auth/login/verify-otp", data);
     setStoredToken(res.data.accessToken);
     return res.data;
   },
 
   getProfile: () => apiRequest<AuthUser>("get", "/auth/me"),
 
-  updateProfile: (data: Partial<Pick<AuthUser, "name" | "phone" | "avatar">>) =>
+  updateProfile: (data: Partial<Pick<AuthUser, "name" | "phone" | "avatar" | "mfaEnabled">>) =>
     apiRequest<AuthUser>("patch", "/auth/me", data),
 
   forgotPassword: (email: string) =>

@@ -104,3 +104,28 @@ export function completeRegistrationEmailTemplate(params: {
   const text = `Namaste,\n\nComplete your ${brand.name} registration for ${params.email} (expires in ${params.expiresMinutes} minutes):\n${params.completeUrl}\n\nIf you didn't request this, ignore this email.`;
   return { subject, html, text };
 }
+
+export function emailOtpTemplate(params: {
+  code: string;
+  purposeLabel: string;
+  expiresMinutes: number;
+}): { subject: string; html: string; text: string } {
+  const subject = `${params.code} is your ${brand.name} verification code`;
+  const html = layout(
+    subject,
+    `
+    <h1 style="margin:0 0 12px;font-size:22px;color:${brand.color};">${params.purposeLabel}</h1>
+    <p style="margin:0 0 16px;line-height:1.55;font-size:15px;">Namaste,</p>
+    <p style="margin:0 0 20px;line-height:1.55;font-size:15px;">
+      Use this one-time code to continue. It expires in <strong>${params.expiresMinutes} minutes</strong>.
+    </p>
+    <p style="margin:0 0 24px;letter-spacing:6px;font-size:32px;font-weight:700;color:${brand.color};">
+      ${params.code}
+    </p>
+    <p style="margin:0;font-size:12px;color:#7a7060;line-height:1.5;">
+      If you did not request this, you can ignore this email.
+    </p>`
+  );
+  const text = `Your ${brand.name} code: ${params.code}\nExpires in ${params.expiresMinutes} minutes.\n\nIf you didn't request this, ignore this email.`;
+  return { subject, html, text };
+}

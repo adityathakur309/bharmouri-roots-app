@@ -8,6 +8,7 @@ export interface AuthUser {
   avatar?: string;
   phone?: string;
   role: "user" | "admin";
+  mfaEnabled?: boolean;
 }
 
 interface AuthStore {

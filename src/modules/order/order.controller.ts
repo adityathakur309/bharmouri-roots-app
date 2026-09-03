@@ -94,6 +94,12 @@ export class OrderController {
     const order = await orderService.createShipment(id);
     return successResponse(order, { message: "Shipment created" });
   }
+
+  async cancelMine(request: AuthenticatedRequest, context: RouteContext) {
+    const { id } = await context.params;
+    const result = await orderService.cancelByCustomer(id, request.user.id);
+    return successResponse(result.order, { message: result.refundHint });
+  }
 }
 
 export const orderController = new OrderController();

@@ -64,13 +64,7 @@ function main() {
   }
 
   for (const seed of HERO_SEEDS) {
-    writeSvg(
-      HERO_DIR,
-      seed,
-      buildHeroSvg(heroTheme(seed), {
-        subtitle: "Authentic Himachali products · BharmouriRoots",
-      })
-    );
+    writeSvg(HERO_DIR, seed, buildHeroSvg(heroTheme(seed)));
   }
 
   console.log(

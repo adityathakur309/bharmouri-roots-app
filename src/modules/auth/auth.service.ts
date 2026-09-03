@@ -4,25 +4,36 @@ import {
   comparePassword,
   signAccessToken,
   signRegistrationToken,
+  signMfaChallengeToken,
   toPublicUser,
   verifyRegistrationToken,
+  verifyMfaChallengeToken,
 } from "@/lib/utils/auth-helper";
 import { ConflictError, UnauthorizedError, NotFoundError, ValidationError } from "@/lib/utils/errors";
 import { logger } from "@/lib/utils/logger";
 import { sanitizeObject } from "@/lib/utils/sanitize";
 import { sendEmail } from "@/lib/email/email.service";
 import {
-  completeRegistrationEmailTemplate,
+  emailOtpTemplate,
   passwordResetEmailTemplate,
   welcomeEmailTemplate,
 } from "@/lib/email/templates";
-import { REGISTRATION_TOKEN_EXPIRES_MINUTES } from "@/lib/constants/jwt";
 import { getSiteUrl } from "@/lib/seo/config";
+import {
+  generateOtpCode,
+  hashOtpCode,
+  maskEmail,
+  OTP_MAX_ATTEMPTS,
+  OTP_TTL_MS,
+} from "@/lib/auth/otp";
+import { EmailOtp, type EmailOtpPurpose } from "@/lib/db/models";
 import type {
   RegisterInput,
   StartRegistrationInput,
   CompleteRegistrationInput,
+  VerifyRegistrationOtpInput,
   LoginInput,
+  VerifyLoginOtpInput,
   UpdateProfileInput,
   ForgotPasswordInput,
   ResetPasswordInput,
@@ -48,24 +59,48 @@ function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-export class AuthService {
-  /**
-   * Step 1: validate email + send signed complete-registration link.
-   * Does not create a user yet.
-   */
-  async startRegistration(input: StartRegistrationInput) {
-    const email = input.email.toLowerCase().trim();
-    const existing = await authRepository.findByEmail(email);
-    if (existing) {
-      throw new ConflictError("Email already registered. Please sign in instead.");
-    }
+function throwEmailDeliveryError(result: { error?: string; skipped?: boolean }) {
+  if (result.skipped || /not configured/i.test(result.error || "")) {
+    throw new ValidationError(
+      "Email service is not configured. Please try again later."
+    );
+  }
+  if (/invalid login|badcredentials|username and password/i.test(result.error || "")) {
+    throw new ValidationError(
+      "Could not send verification email (mail login failed). Please try again later."
+    );
+  }
+  throw new ValidationError(
+    "Could not send verification email. Please try again in a moment."
+  );
+}
 
-    const token = signRegistrationToken(email);
-    const completeUrl = `${appBaseUrl()}/complete-registration?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
-    const template = completeRegistrationEmailTemplate({
+export class AuthService {
+  private async issueEmailOtp(params: {
+    email: string;
+    purpose: EmailOtpPurpose;
+    purposeLabel: string;
+    userId?: string;
+  }) {
+    const email = params.email.toLowerCase().trim();
+    const code = generateOtpCode();
+    const codeHash = hashOtpCode(code);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    await EmailOtp.deleteMany({ email, purpose: params.purpose });
+    await EmailOtp.create({
       email,
-      completeUrl,
-      expiresMinutes: REGISTRATION_TOKEN_EXPIRES_MINUTES,
+      purpose: params.purpose,
+      codeHash,
+      expiresAt,
+      attempts: 0,
+      userId: params.userId,
+    });
+
+    const template = emailOtpTemplate({
+      code,
+      purposeLabel: params.purposeLabel,
+      expiresMinutes: Math.round(OTP_TTL_MS / 60_000),
     });
 
     const result = await sendEmail({
@@ -76,32 +111,86 @@ export class AuthService {
     });
 
     if (!result.ok) {
-      logger.warn("Registration verification email not delivered", {
+      logger.warn("OTP email not delivered", {
         email,
+        purpose: params.purpose,
         error: result.error,
         skipped: result.skipped,
       });
-
-      // Email format is already validated — this is a delivery/config failure.
-      if (result.skipped || /not configured/i.test(result.error || "")) {
-        throw new ValidationError(
-          "Email service is not configured. Please try again later."
-        );
-      }
-      if (/invalid login|badcredentials|username and password/i.test(result.error || "")) {
-        throw new ValidationError(
-          "Could not send verification email (mail login failed). Please try again later."
-        );
-      }
-      throw new ValidationError(
-        "Could not send verification email. Please try again in a moment."
-      );
+      throwEmailDeliveryError(result);
     }
 
-    logger.info("Registration verification email sent", { email });
-    return {
-      message: "Check your email inbox and complete registration.",
+    logger.info("OTP email sent", { email, purpose: params.purpose });
+    return { email, maskedEmail: maskEmail(email), expiresAt };
+  }
+
+  private async consumeEmailOtp(
+    email: string,
+    purpose: EmailOtpPurpose,
+    code: string
+  ) {
+    const normalized = email.toLowerCase().trim();
+    const doc = await EmailOtp.findOne({ email: normalized, purpose }).select(
+      "+codeHash"
+    );
+    if (!doc || doc.expiresAt.getTime() < Date.now()) {
+      throw new ValidationError("Invalid or expired verification code");
+    }
+    if (doc.attempts >= OTP_MAX_ATTEMPTS) {
+      await EmailOtp.deleteMany({ email: normalized, purpose });
+      throw new ValidationError("Too many attempts. Please request a new code.");
+    }
+
+    const ok = doc.codeHash === hashOtpCode(code);
+    if (!ok) {
+      doc.attempts += 1;
+      await doc.save();
+      throw new ValidationError("Invalid or expired verification code");
+    }
+
+    await EmailOtp.deleteMany({ email: normalized, purpose });
+    return doc;
+  }
+
+  /**
+   * Step 1: validate email + send OTP for registration.
+   * Does not create a user yet.
+   */
+  async startRegistration(input: StartRegistrationInput) {
+    const email = input.email.toLowerCase().trim();
+    const existing = await authRepository.findByEmail(email);
+    if (existing) {
+      throw new ConflictError("Email already registered. Please sign in instead.");
+    }
+
+    const issued = await this.issueEmailOtp({
       email,
+      purpose: "registration",
+      purposeLabel: "Verify your email",
+    });
+
+    return {
+      message: "We sent a 6-digit verification code to your email.",
+      email: issued.email,
+      maskedEmail: issued.maskedEmail,
+    };
+  }
+
+  /** Step 1b: verify registration OTP → signed complete-registration token */
+  async verifyRegistrationOtp(input: VerifyRegistrationOtpInput) {
+    const email = input.email.toLowerCase().trim();
+    const existing = await authRepository.findByEmail(email);
+    if (existing) {
+      throw new ConflictError("Email already registered. Please sign in instead.");
+    }
+
+    await this.consumeEmailOtp(email, "registration", input.code);
+    const token = signRegistrationToken(email);
+
+    return {
+      message: "Email verified. Complete your account setup.",
+      email,
+      token,
     };
   }
 
@@ -116,7 +205,7 @@ export class AuthService {
 
     if (!verifiedEmail) {
       throw new ValidationError(
-        "Invalid or expired registration link. Please start again from Sign up."
+        "Invalid or expired registration session. Please start again from Sign up."
       );
     }
 
@@ -125,10 +214,11 @@ export class AuthService {
       email: verifiedEmail,
       password: data.password,
       phone: data.phone,
+      mfaEnabled: data.mfaEnabled,
     });
   }
 
-  async register(input: RegisterInput) {
+  async register(input: RegisterInput & { mfaEnabled?: boolean }) {
     const data = sanitizeObject(input);
     const existing = await authRepository.findByEmail(data.email);
     if (existing) throw new ConflictError("Email already registered");
@@ -150,6 +240,7 @@ export class AuthService {
       phone: data.phone,
       role: isBootstrapAdmin ? "admin" : "user",
       emailVerified: new Date(),
+      mfaEnabled: Boolean(data.mfaEnabled),
     });
 
     const publicUser = toPublicUser(user);
@@ -160,7 +251,6 @@ export class AuthService {
       role: publicUser.role,
     });
 
-    // Best-effort welcome email — never blocks registration
     const welcome = welcomeEmailTemplate({
       name: publicUser.name,
       shopUrl: `${appBaseUrl()}/products`,
@@ -204,6 +294,7 @@ export class AuthService {
         avatar: profile.picture,
         role: isBootstrapAdmin ? "admin" : "user",
         emailVerified: profile.verified_email ? new Date() : new Date(),
+        mfaEnabled: false,
       });
       logger.info("User created via Google OAuth", { email });
     } else {
@@ -249,6 +340,24 @@ export class AuthService {
       throw new UnauthorizedError("Invalid email or password");
     }
 
+    if (user.mfaEnabled) {
+      const issued = await this.issueEmailOtp({
+        email: user.email,
+        purpose: "login_mfa",
+        purposeLabel: "Your login verification code",
+        userId: String(user._id),
+      });
+      const mfaToken = signMfaChallengeToken(String(user._id), user.email);
+      logger.info("MFA challenge issued", { userId: String(user._id) });
+      return {
+        requiresMfa: true as const,
+        mfaToken,
+        email: issued.email,
+        maskedEmail: issued.maskedEmail,
+        message: "Enter the verification code we emailed you.",
+      };
+    }
+
     const publicUser = toPublicUser(user);
     const accessToken = signAccessToken({
       id: publicUser.id,
@@ -258,6 +367,34 @@ export class AuthService {
     });
 
     logger.info("User logged in", { userId: publicUser.id });
+    return { requiresMfa: false as const, user: publicUser, accessToken };
+  }
+
+  async verifyLoginOtp(input: VerifyLoginOtpInput) {
+    const challenge = verifyMfaChallengeToken(input.mfaToken);
+    if (!challenge) {
+      throw new ValidationError("Verification session expired. Please sign in again.");
+    }
+
+    await this.consumeEmailOtp(challenge.email, "login_mfa", input.code);
+
+    const user = await authRepository.findById(challenge.userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError("Account is deactivated");
+    }
+    if (user.email.toLowerCase() !== challenge.email) {
+      throw new ValidationError("Verification session expired. Please sign in again.");
+    }
+
+    const publicUser = toPublicUser(user);
+    const accessToken = signAccessToken({
+      id: publicUser.id,
+      name: publicUser.name,
+      email: publicUser.email,
+      role: publicUser.role,
+    });
+
+    logger.info("User logged in via MFA", { userId: publicUser.id });
     return { user: publicUser, accessToken };
   }
 
@@ -328,13 +465,9 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(input.password);
-    await authRepository.clearResetTokenAndSetPassword(
-      String(user._id),
-      passwordHash
-    );
-
-    logger.info("Password reset completed", { userId: String(user._id) });
-    return { message: "Password updated successfully. You can sign in now." };
+    await authRepository.clearResetTokenAndSetPassword(String(user._id), passwordHash);
+    logger.info("Password reset successful", { userId: String(user._id) });
+    return { message: "Password updated. You can sign in now." };
   }
 }
 

@@ -14,6 +14,7 @@ import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
 import { useAuth } from "@/hooks/use-auth";
 import { useCategories } from "@/hooks/use-categories";
+import { CategoryIcon } from "@/components/shared/category-icon";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -167,7 +168,7 @@ export function Navbar() {
                               href={cat.href}
                               className="flex items-center gap-2 p-2 rounded-xl hover:bg-[hsl(var(--muted))] transition-colors text-sm"
                             >
-                              <span className="text-lg">{cat.icon}</span>
+                              <CategoryIcon icon={cat.icon} alt={cat.label} size="sm" />
                               <span className="font-medium">{cat.label}</span>
                             </Link>
                           ))}
@@ -384,7 +385,7 @@ export function Navbar() {
                         href={cat.href}
                         className="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-[hsl(var(--muted))] text-sm transition-colors"
                       >
-                        <span className="text-base">{cat.icon}</span>
+                        <CategoryIcon icon={cat.icon} alt={cat.label} size="sm" />
                         <span className="truncate">{cat.label}</span>
                       </Link>
                     ))}

@@ -685,14 +685,17 @@ export class PaymentService {
       throw new ValidationError("Invalid refund amount");
     }
 
+    const refundNotes: Record<string, string> = {};
+    if (options?.reason) refundNotes.reason = options.reason;
+    if (options?.requestNumber) {
+      refundNotes.requestNumber = options.requestNumber;
+      refundNotes.receipt = options.requestNumber;
+    }
+
     const refund = await razorpayClient.refundPayment(
       latest.razorpayPaymentId,
       amountPaise,
-      {
-        reason: options?.reason,
-        requestNumber: options?.requestNumber,
-        receipt: options?.requestNumber,
-      }
+      Object.keys(refundNotes).length ? refundNotes : undefined
     );
 
     const refundId = (refund as { id?: string }).id;

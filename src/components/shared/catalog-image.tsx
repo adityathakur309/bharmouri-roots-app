@@ -12,6 +12,7 @@ interface CatalogImageProps {
   /** Category slug or product seed for themed fallback */
   themeKey?: string;
   variant?: "product" | "category";
+  /** Fill parent box (parent should have size). Safe even if parent is not `relative`. */
   fill?: boolean;
 }
 
@@ -20,13 +21,11 @@ function FallbackPanel({
   variant,
   alt,
   className,
-  fill,
 }: {
   themeKey?: string;
   variant: "product" | "category";
   alt: string;
   className?: string;
-  fill?: boolean;
 }) {
   const theme =
     variant === "category"
@@ -36,8 +35,7 @@ function FallbackPanel({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center text-center text-white",
-        fill ? "absolute inset-0 h-full w-full" : "h-full w-full",
+        "flex h-full w-full flex-col items-center justify-center text-center text-white",
         className
       )}
       style={{
@@ -66,28 +64,51 @@ export function CatalogImage({
   const showFallback = !normalized || failed;
 
   if (showFallback) {
+    if (!fill) {
+      return (
+        <FallbackPanel
+          themeKey={themeKey}
+          variant={variant}
+          alt={alt}
+          className={className}
+        />
+      );
+    }
     return (
-      <FallbackPanel
-        themeKey={themeKey}
-        variant={variant}
+      <div className="relative h-full w-full overflow-hidden">
+        <FallbackPanel
+          themeKey={themeKey}
+          variant={variant}
+          alt={alt}
+          className={className}
+        />
+      </div>
+    );
+  }
+
+  if (!fill) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={normalized}
         alt={alt}
-        className={className}
-        fill={fill}
+        className={cn("object-cover", className)}
+        loading="lazy"
+        onError={() => setFailed(true)}
       />
     );
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={normalized}
-      alt={alt}
-      className={cn(
-        fill ? "absolute inset-0 h-full w-full object-cover" : "object-cover",
-        className
-      )}
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
+    <div className="relative h-full w-full overflow-hidden">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={normalized}
+        alt={alt}
+        className={cn("absolute inset-0 h-full w-full object-cover", className)}
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </div>
   );
 }

@@ -35,6 +35,7 @@ function CompleteRegistrationForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [mfaEnabled, setMfaEnabled] = useState(false);
 
   if (!emailFromUrl || !token) {
     return (
@@ -68,6 +69,7 @@ function CompleteRegistrationForm() {
       email: emailFromUrl,
       password,
       token,
+      mfaEnabled,
     });
     setIsLoading(false);
 
@@ -174,6 +176,22 @@ function CompleteRegistrationForm() {
               : ""
           }`}
         />
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 p-3">
+        <input
+          id="mfa-optional"
+          type="checkbox"
+          checked={mfaEnabled}
+          onChange={(e) => setMfaEnabled(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
+        />
+        <label htmlFor="mfa-optional" className="text-sm leading-snug cursor-pointer">
+          <span className="font-medium">Enable email MFA (optional)</span>
+          <span className="block text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
+            After password login, we&apos;ll email a one-time code before signing you in.
+          </span>
+        </label>
       </div>
 
       {error && (

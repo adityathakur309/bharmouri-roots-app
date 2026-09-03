@@ -3,7 +3,9 @@ import {
   registerSchema,
   startRegistrationSchema,
   completeRegistrationSchema,
+  verifyRegistrationOtpSchema,
   loginSchema,
+  verifyLoginOtpSchema,
   updateProfileSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
@@ -26,7 +28,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 export class AuthController {
-  /** Step 1: email only — send complete-registration link */
+  /** Step 1: email only — send registration OTP */
   async startRegistration(request: NextRequest) {
     const body = await parseJsonBody(request);
     const input = startRegistrationSchema.parse(body);
@@ -34,7 +36,15 @@ export class AuthController {
     return successResponse(result, { message: result.message });
   }
 
-  /** Step 2: name + password after email verification link */
+  /** Step 1b: verify registration OTP → registration token */
+  async verifyRegistrationOtp(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = verifyRegistrationOtpSchema.parse(body);
+    const result = await authService.verifyRegistrationOtp(input);
+    return successResponse(result, { message: result.message });
+  }
+
+  /** Step 2: name + password after email OTP verification */
   async completeRegistration(request: NextRequest) {
     const body = await parseJsonBody(request);
     const input = completeRegistrationSchema.parse(body);
@@ -62,6 +72,17 @@ export class AuthController {
     const body = await parseJsonBody(request);
     const input = loginSchema.parse(body);
     const result = await authService.login(input);
+    if (result.requiresMfa) {
+      return successResponse(result, { message: result.message });
+    }
+    const res = successResponse(result, { message: "Login successful" });
+    return appendAuthCookie(res, result.accessToken);
+  }
+
+  async verifyLoginOtp(request: NextRequest) {
+    const body = await parseJsonBody(request);
+    const input = verifyLoginOtpSchema.parse(body);
+    const result = await authService.verifyLoginOtp(input);
     const res = successResponse(result, { message: "Login successful" });
     return appendAuthCookie(res, result.accessToken);
   }

@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, Package, Truck, MapPin, RotateCcw } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Package,
+  Truck,
+  MapPin,
+  RotateCcw,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +31,11 @@ import { REFUND_REASON_PRESETS } from "@/lib/constants/refund";
 import { formatPrice, formatDate } from "@/lib/utils";
 import { orderStatusConfig } from "@/lib/order-status";
 import { useToast } from "@/hooks/use-toast";
+import {
+  getCustomerCancelEligibility,
+  getCustomerRefundEligibility,
+  getRefundWindowDays,
+} from "@/lib/utils/order-customer-actions";
 
 interface OrderDetail {
   id: string;
@@ -33,6 +46,8 @@ interface OrderDetail {
   shippingCharge: number;
   total: number;
   createdAt: string;
+  updatedAt?: string;
+  deliveredAt?: string;
   items: Array<{
     name: string;
     image: string;
@@ -71,6 +86,8 @@ export default function UserOrderDetailPage() {
   const [refundReason, setRefundReason] = useState("");
   const [refundNotes, setRefundNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,6 +104,15 @@ export default function UserOrderDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const cancelEligibility = useMemo(
+    () => (order ? getCustomerCancelEligibility(order) : { allowed: false as const }),
+    [order]
+  );
+  const refundEligibility = useMemo(
+    () => (order ? getCustomerRefundEligibility(order) : { allowed: false as const }),
+    [order]
+  );
 
   if (loading) {
     return (
@@ -120,20 +146,65 @@ export default function UserOrderDetailPage() {
   const status = orderStatusConfig[order.status] ?? orderStatusConfig.processing;
   const StatusIcon = status.icon;
   const tracking = order.trackingId ?? order.awbCode;
-  const canRequestRefund =
-    !["cancelled", "payment_pending"].includes(order.status) &&
-    (order.paymentStatus === "paid" || order.paymentMethod === "cod") &&
-    order.paymentStatus !== "refunded";
 
   const openRefund = (idx: number) => {
+    if (!refundEligibility.allowed) {
+      toast({
+        title: "Refund not available",
+        description: refundEligibility.reason,
+        variant: "destructive",
+      });
+      return;
+    }
     setRefundItemIndex(idx);
     setRefundQty(String(order.items[idx]?.quantity ?? 1));
     setRefundReason("");
     setRefundNotes("");
   };
 
+  const tryCancel = () => {
+    if (!cancelEligibility.allowed) {
+      toast({
+        title: "Cannot cancel order",
+        description: cancelEligibility.reason,
+        variant: "destructive",
+      });
+      return;
+    }
+    setCancelOpen(true);
+  };
+
+  const submitCancel = async () => {
+    setCancelling(true);
+    try {
+      const res = await orderApi.cancel(order.id);
+      toast({
+        title: "Order cancelled",
+        description: res.message ?? "Your order has been cancelled.",
+      });
+      setCancelOpen(false);
+      await load();
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Could not cancel order";
+      toast({ title: message, variant: "destructive" });
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const submitRefund = async () => {
     if (refundItemIndex === null) return;
+    if (!refundEligibility.allowed) {
+      toast({
+        title: "Refund not available",
+        description: refundEligibility.reason,
+        variant: "destructive",
+      });
+      return;
+    }
     if (refundReason.trim().length < 5) {
       toast({
         title: "Please explain the reason (min 5 characters)",
@@ -184,6 +255,10 @@ export default function UserOrderDetailPage() {
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               Placed on {formatDate(order.createdAt)}
             </p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1 capitalize">
+              Payment: {order.paymentStatus.replace(/_/g, " ")} ·{" "}
+              {order.paymentMethod === "cod" ? "COD" : "Online"}
+            </p>
             <Link
               href="/dashboard/returns"
               className="text-xs text-[hsl(var(--primary))] hover:underline mt-1 inline-block"
@@ -191,13 +266,37 @@ export default function UserOrderDetailPage() {
               View my returns →
             </Link>
           </div>
-          <span
-            className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${status.color}`}
-          >
-            <StatusIcon className="w-3 h-3" />
-            {status.label}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${status.color}`}
+            >
+              <StatusIcon className="w-3 h-3" />
+              {status.label}
+            </span>
+            {order.status !== "cancelled" && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
+                onClick={tryCancel}
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Cancel order
+              </Button>
+            )}
+          </div>
         </div>
+        {!refundEligibility.allowed && order.paymentStatus !== "paid" && (
+          <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 rounded-lg px-3 py-2">
+            Refund / return opens after payment is completed.
+          </p>
+        )}
+        {order.status === "delivered" && refundEligibility.allowed && (
+          <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">
+            Return window: {getRefundWindowDays()} days from delivery.
+          </p>
+        )}
       </div>
 
       <motion.section
@@ -256,7 +355,7 @@ export default function UserOrderDetailPage() {
         <div className="p-4 space-y-3">
           {order.items.map((item, idx) => (
             <div key={idx} className="flex gap-3 items-center">
-              <div className="w-14 h-14 rounded-xl overflow-hidden bg-[hsl(var(--muted))] shrink-0">
+              <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-[hsl(var(--muted))] shrink-0">
                 <CatalogImage src={item.image} alt={item.name} variant="product" />
               </div>
               <div className="flex-1 min-w-0">
@@ -265,17 +364,15 @@ export default function UserOrderDetailPage() {
                   Qty {item.quantity} · {formatPrice(item.price)}
                 </p>
               </div>
-              {canRequestRefund && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="gap-1 shrink-0"
-                  onClick={() => openRefund(idx)}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" /> Refund
-                </Button>
-              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1 shrink-0"
+                onClick={() => openRefund(idx)}
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Refund
+              </Button>
             </div>
           ))}
         </div>
@@ -299,6 +396,32 @@ export default function UserOrderDetailPage() {
         </p>
         <p className="text-[hsl(var(--muted-foreground))]">{order.shippingAddress.phone}</p>
       </section>
+
+      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel this order?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            {order.paymentStatus === "paid"
+              ? "After cancelling a paid order, you can request a refund from the items below or My Returns."
+              : "This will cancel your unpaid order."}
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCancelOpen(false)}>
+              Keep order
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={cancelling}
+              onClick={() => void submitCancel()}
+            >
+              {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, cancel"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={refundItemIndex !== null}

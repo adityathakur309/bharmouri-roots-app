@@ -88,7 +88,7 @@ export default function ReturnsPage() {
               className="bg-[hsl(var(--card))] border rounded-2xl p-4 sm:p-5"
             >
               <div className="flex gap-4">
-                <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border">
+                <div className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 border">
                   <CatalogImage
                     src={item.productImage}
                     alt={item.productName}

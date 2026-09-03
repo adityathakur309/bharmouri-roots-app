@@ -158,6 +158,29 @@ html {
   animation: float 3s ease-in-out infinite;
 }
 
+/* Category chip marquee — continuous right → left */
+@keyframes category-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-33.333%); }
+}
+.category-marquee-track {
+  animation: category-marquee 35s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .category-marquee-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: 100% !important;
+    max-width: 100%;
+    justify-content: center;
+  }
+}
+@media (max-width: 640px) {
+  .category-marquee-track {
+    animation-duration: 28s;
+  }
+}
+
 /* Pulse glow */
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }

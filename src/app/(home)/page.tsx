@@ -11,11 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCard } from "@/components/shared/product-card";
-import { CatalogImage } from "@/components/shared/catalog-image";
 import { EmptyState } from "@/components/shared/empty-state";
 import { categories as mockFallbackCategories, testimonials, heroSlides } from "@/lib/mock-data";
 import { ParentBrandSection } from "@/components/home/parent-brand-section";
 import { HeroParentBrandStrip } from "@/components/home/hero-parent-brand-strip";
+import { CategoryChipMarquee } from "@/components/home/category-chip-marquee";
 import { productApi } from "@/services/api";
 import { useCategories } from "@/hooks/use-categories";
 import { heroImage } from "@/lib/product-images";
@@ -146,74 +146,141 @@ export default function HomePage() {
 
   return (
     <div className="overflow-hidden">
-      {/* Hero Section */}
+      {/* Hero Section — classic full-bleed Himalayan layout */}
       <section ref={heroRef} className="relative min-h-[92vh] flex items-center overflow-hidden">
         <motion.div style={{ y: heroY }} className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={heroSrc}
-            alt="Himalayan landscape"
-            className="w-full h-full object-cover"
+            alt=""
+            aria-hidden
+            className="w-full h-full object-cover scale-105 blur-[2px]"
             onError={() => {
               if (heroSrc !== HERO_FALLBACK) setHeroSrc(HERO_FALLBACK);
             }}
           />
-          <div className="absolute inset-0 gradient-himalaya opacity-80" />
-          <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-[hsl(var(--background))]/50" />
+          <div className="absolute inset-0 gradient-himalaya opacity-70" />
+          <div className="absolute inset-0 bg-linear-to-r from-[hsl(142_38%_12%/0.55)] via-transparent to-[hsl(28_60%_20%/0.35)]" />
+          <div className="absolute inset-0 bg-linear-to-b from-black/25 via-transparent to-[hsl(var(--background))]/45" />
         </motion.div>
 
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <motion.div animate={{ y: [0, -20, 0], rotate: [0, 5, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }} className="absolute top-20 right-[10%] text-6xl opacity-40">🏔️</motion.div>
-          <motion.div animate={{ y: [0, 15, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }} className="absolute bottom-32 left-[5%] text-4xl opacity-30">🌿</motion.div>
-          <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 2 }} className="absolute top-[40%] right-[5%] text-3xl opacity-30">🍎</motion.div>
+        <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
+          <motion.div
+            animate={{ y: [0, -16, 0], rotate: [0, 4, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute top-24 right-[8%] text-5xl sm:text-6xl opacity-35"
+          >
+            🏔️
+          </motion.div>
+          <motion.div
+            animate={{ y: [0, 12, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+            className="absolute bottom-36 left-[4%] text-3xl sm:text-4xl opacity-30"
+          >
+            🌿
+          </motion.div>
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+            className="absolute top-[42%] right-[6%] text-2xl sm:text-3xl opacity-25"
+          >
+            🍎
+          </motion.div>
         </div>
 
-        <div className="absolute inset-0 pattern-dots opacity-10" />
+        <div className="absolute inset-0 pattern-dots opacity-[0.08]" />
 
-        <motion.div style={{ opacity: heroOpacity }} className="relative z-10 container mx-auto px-4 max-w-7xl pt-6 sm:pt-8">
+        <motion.div
+          style={{ opacity: heroOpacity }}
+          className="relative z-10 container mx-auto px-4 max-w-7xl pt-8 sm:pt-10 pb-24"
+        >
           <div className="max-w-3xl">
             <HeroParentBrandStrip />
 
-            <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-6">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-6"
+            >
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <span className="text-white/90 text-sm font-medium">{heroSlides[0].badge}</span>
             </motion.div>
 
-            <motion.h1 initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.8 }} className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight">
+            <motion.h1
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.8 }}
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-[1.08] tracking-tight"
+            >
               From the <span className="text-[hsl(var(--accent))]">Heart</span> of the Himalayas
             </motion.h1>
 
-            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="text-white/80 text-lg md:text-xl mb-8 max-w-xl leading-relaxed">
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
+              className="text-white/80 text-base sm:text-lg md:text-xl mb-8 max-w-xl leading-relaxed"
+            >
               {heroSlides[0].description}
             </motion.p>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9 }}
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4"
+            >
               <Link href="/products" className="w-full sm:w-auto">
                 <Button size="xl" variant="saffron" className="gap-2 font-semibold shadow-2xl w-full sm:w-auto">
                   Explore Products <ArrowRight className="w-5 h-5" />
                 </Button>
               </Link>
               <Link href="/about" className="w-full sm:w-auto">
-                <Button size="xl" className="bg-white/10 border border-white/30 text-white hover:bg-white/20 gap-2 w-full sm:w-auto">
+                <Button
+                  size="xl"
+                  className="bg-white/10 border border-white/30 text-white hover:bg-white/20 gap-2 w-full sm:w-auto backdrop-blur-sm"
+                >
                   Our Story <ChevronRight className="w-5 h-5" />
                 </Button>
               </Link>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.1 }} className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-8 gap-y-4 sm:gap-8 mt-10 sm:mt-12">
-              {[{ value: "2000+", label: "Happy Customers" }, { value: "50+", label: "Products" }, { value: "100%", label: "Organic" }, { value: "4.9★", label: "Rating" }].map((stat) => (
-                <div key={stat.label} className="text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.1 }}
+              className="flex flex-wrap gap-x-8 gap-y-4 sm:gap-x-10 mt-10 sm:mt-12"
+            >
+              {[
+                { value: "2000+", label: "Happy Customers" },
+                { value: "50+", label: "Products" },
+                { value: "100%", label: "Organic" },
+                { value: "4.9★", label: "Rating" },
+              ].map((stat) => (
+                <div key={stat.label} className="min-w-[5.5rem]">
                   <div className="text-xl sm:text-2xl font-bold text-white">{stat.value}</div>
-                  <div className="text-white/60 text-[10px] sm:text-xs uppercase tracking-wider">{stat.label}</div>
+                  <div className="text-white/60 text-[10px] sm:text-xs uppercase tracking-wider">
+                    {stat.label}
+                  </div>
                 </div>
               ))}
             </motion.div>
           </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10"
+        >
           <span className="text-white/50 text-xs uppercase tracking-widest">Scroll</span>
-          <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-5 h-8 rounded-full border-2 border-white/30 flex items-start justify-center pt-1.5">
+          <motion.div
+            animate={{ y: [0, 8, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+            className="w-5 h-8 rounded-full border-2 border-white/30 flex items-start justify-center pt-1.5"
+          >
             <div className="w-1 h-2 rounded-full bg-white/60" />
           </motion.div>
         </motion.div>
@@ -243,54 +310,33 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Categories */}
-      <section className="py-12 sm:py-20">
-        <div className="container mx-auto px-4 max-w-7xl">
-          <SectionHeader badge="Browse by Category" title="Explore Our Collections" subtitle="From mountain farms to skilled artisans — discover the finest of Himachal Pradesh" />
-          {!categoriesLoaded ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <Skeleton key={i} className="aspect-[4/3] rounded-2xl" />
-              ))}
-            </div>
-          ) : displayCategories.length === 0 ? (
+      {/* Categories — small running chips */}
+      <section className="py-10 sm:py-14 border-y border-[hsl(var(--border))]/60 bg-[hsl(var(--muted))]/20">
+        <div className="container mx-auto px-4 max-w-7xl mb-6 sm:mb-8">
+          <SectionHeader
+            badge="Browse by Category"
+            title="Explore Our Collections"
+            subtitle="From mountain farms to skilled artisans — discover the finest of Himachal Pradesh"
+          />
+        </div>
+        {!categoriesLoaded ? (
+          <div className="container mx-auto px-4 max-w-7xl flex gap-3 overflow-hidden">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-32 rounded-full shrink-0" />
+            ))}
+          </div>
+        ) : displayCategories.length === 0 ? (
+          <div className="container mx-auto px-4 max-w-7xl">
             <EmptyState
               compact
               title="Categories coming soon"
               description="We are preparing our Himachali collections."
               primaryAction={{ label: "Browse Products", href: "/products" }}
             />
-          ) : (
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={stagger} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {displayCategories.map((cat) => (
-                <motion.div key={cat.id || cat.slug} variants={fadeUp}>
-                  <Link href={`/products?category=${cat.slug}`}>
-                    <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-shadow">
-                      <CatalogImage
-                        src={cat.image}
-                        alt={cat.name}
-                        themeKey={cat.slug}
-                        variant="category"
-                        className="group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
-                      <div className="absolute bottom-0 left-0 right-0 p-4">
-                        <span className="text-2xl mb-1 block">{cat.icon || "🏔️"}</span>
-                        <h3 className="text-white font-bold text-sm leading-tight">{cat.name}</h3>
-                        <p className="text-white/70 text-xs">
-                          {cat.productCount} {cat.productCount === 1 ? "product" : "products"}
-                        </p>
-                      </div>
-                      <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ArrowRight className="w-3 h-3 text-white" />
-                      </div>
-                    </motion.div>
-                  </Link>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <CategoryChipMarquee categories={displayCategories} />
+        )}
       </section>
 
       {/* Featured Products */}
@@ -325,40 +371,64 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Story Banner */}
-      <section className="py-14 sm:py-24 relative overflow-hidden">
+      {/* Story Banner — after featured products */}
+      <section className="relative overflow-hidden py-16 sm:py-20 md:py-24">
         <div className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={STORY_BANNER}
-            alt="Himachal Pradesh mountains"
-            className="w-full h-full object-cover"
+            alt=""
+            aria-hidden
+            className="h-full w-full object-cover scale-105 blur-[1.5px]"
           />
-          <div className="absolute inset-0 bg-linear-to-r from-[hsl(142,38%,15%)]/95 via-[hsl(142,38%,15%)]/80 to-transparent" />
+          <div className="absolute inset-0 bg-[hsl(142_38%_12%/0.82)]" />
+          <div className="absolute inset-0 bg-linear-to-r from-[hsl(142_38%_10%/0.92)] via-[hsl(142_38%_12%/0.75)] to-[hsl(28_40%_18%/0.45)]" />
         </div>
+
         <div className="relative container mx-auto px-4 max-w-7xl">
           <div className="max-w-xl">
-            <motion.div initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}>
-              <Badge variant="saffron" className="mb-4">Our Story</Badge>
-              <h2 className="text-3xl md:text-5xl font-bold text-white mb-6 leading-tight">
-                Rooted in the <span className="text-[hsl(var(--accent))]">Himalayas</span>, Delivered with Love
+            <motion.div
+              initial={{ opacity: 0, x: -28 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.7 }}
+            >
+              <Badge variant="saffron" className="mb-4">
+                Our Story
+              </Badge>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-5 sm:mb-6 leading-tight">
+                Rooted in the <span className="text-[hsl(var(--accent))]">Himalayas</span>, Delivered
+                with Love
               </h2>
-              <p className="text-white/80 text-lg mb-6 leading-relaxed">
-                BharmouriRoots was born from a simple idea: to bring the pure, untouched goodness of Bharmour&apos;s mountains to every Indian home. We work directly with local farmers and artisans, ensuring fair prices and authentic quality.
+              <p className="text-white/80 text-base sm:text-lg mb-7 sm:mb-8 leading-relaxed">
+                BharmouriRoots was born from a simple idea: to bring the pure, untouched goodness of
+                Bharmour&apos;s mountains to every Indian home. We work directly with local farmers
+                and artisans, ensuring fair prices and authentic quality.
               </p>
-              <div className="grid grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
-                {[{ icon: Mountain, label: "Mountain Sourced", desc: "2000m+ altitude" }, { icon: Flower2, label: "Organic Farms", desc: "Pesticide-free" }, { icon: Wind, label: "Pure Air", desc: "Clean ecosystem" }].map((item) => (
-                  <div key={item.label} className="text-center">
-                    <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-2">
+
+              <div className="grid grid-cols-1 xs:grid-cols-3 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                {[
+                  { icon: Mountain, label: "Mountain Sourced", desc: "2000m+ altitude" },
+                  { icon: Flower2, label: "Organic Farms", desc: "Pesticide-free" },
+                  { icon: Wind, label: "Pure Air", desc: "Clean ecosystem" },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex sm:flex-col items-center sm:items-center gap-3 sm:gap-0 sm:text-center rounded-xl bg-white/5 border border-white/10 px-3 py-3 sm:px-2 sm:py-4 backdrop-blur-sm"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 sm:mx-auto sm:mb-2">
                       <item.icon className="w-5 h-5 text-[hsl(var(--accent))]" />
                     </div>
-                    <p className="text-white font-semibold text-sm">{item.label}</p>
-                    <p className="text-white/60 text-xs">{item.desc}</p>
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold text-sm">{item.label}</p>
+                      <p className="text-white/60 text-xs">{item.desc}</p>
+                    </div>
                   </div>
                 ))}
               </div>
-              <Link href="/about">
-                <Button variant="saffron" size="lg" className="gap-2">
+
+              <Link href="/about" className="inline-flex w-full sm:w-auto">
+                <Button variant="saffron" size="lg" className="gap-2 w-full sm:w-auto shadow-lg">
                   Discover Our Story <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>

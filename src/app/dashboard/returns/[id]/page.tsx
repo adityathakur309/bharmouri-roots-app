@@ -85,7 +85,7 @@ export default function ReturnDetailPage() {
 
       <div className="bg-[hsl(var(--card))] border rounded-2xl p-5 space-y-4">
         <div className="flex gap-4">
-          <div className="w-24 h-24 rounded-xl overflow-hidden border shrink-0">
+          <div className="relative w-24 h-24 rounded-xl overflow-hidden border shrink-0">
             <CatalogImage
               src={item.productImage}
               alt={item.productName}

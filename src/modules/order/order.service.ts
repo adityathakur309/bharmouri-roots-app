@@ -12,6 +12,7 @@ import {
   assertOrderStatusTransition,
   canCreateShipment,
 } from "@/lib/utils/order-transitions";
+import { assertCustomerCanCancel } from "@/lib/utils/order-customer-actions";
 import { buildPaginationMeta } from "@/lib/utils/query";
 import type {
   CreateOrderInput,
@@ -653,6 +654,61 @@ export class OrderService {
       paidAt: new Date(),
     });
     return mapOrder(updated!);
+  }
+
+  /**
+   * Customer cancel — payment/status rules enforced by assertCustomerCanCancel.
+   * Paid cancelled orders remain refund-eligible via refund policy.
+   */
+  async cancelByCustomer(orderId: string, userId: string) {
+    const order = await orderRepository.findByIdAndUser(orderId, userId);
+    if (!order) throw new NotFoundError("Order not found");
+
+    assertCustomerCanCancel({
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
+      deliveredAt: order.deliveredAt,
+      updatedAt: order.updatedAt,
+    });
+
+    const updates: Record<string, unknown> = {
+      status: "cancelled",
+      cancelledAt: new Date(),
+      adminNotes: "Cancelled by customer",
+    };
+
+    if (
+      order.stockDecremented &&
+      !["shipped", "delivered"].includes(order.status)
+    ) {
+      const { restoreStock } = await import("./inventory.service");
+      await restoreStock(
+        order.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          name: i.name,
+          variantId: i.variantId,
+        }))
+      );
+      updates.stockDecremented = false;
+    }
+
+    if (order.couponCode) {
+      const { couponService } = await import("@/modules/coupon/coupon.service");
+      await couponService.restoreRedemptionForOrder(orderId);
+    }
+
+    const updated = await orderRepository.update(orderId, updates);
+    logger.info("Order cancelled by customer", { orderId, userId });
+
+    const paymentDone = order.paymentStatus === "paid";
+    return {
+      order: mapOrder(updated!),
+      refundHint: paymentDone
+        ? "Order cancelled. You can request a refund for paid items from this order."
+        : "Order cancelled.",
+    };
   }
 }
 

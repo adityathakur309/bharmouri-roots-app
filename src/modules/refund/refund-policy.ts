@@ -1,20 +1,14 @@
 import { isMockPaymentMode } from "@/modules/payment/mock-payment.client";
 import type { IOrder } from "@/lib/db/models/order.model";
-import { ValidationError } from "@/lib/utils/errors";
+import {
+  assertCustomerCanRefund,
+  getRefundWindowDays,
+  refundRequiresDelivery,
+} from "@/lib/utils/order-customer-actions";
 
 export type RefundMockOutcome = "success" | "failed" | "pending";
 
-export function getRefundWindowDays(): number {
-  const n = Number(process.env.REFUND_WINDOW_DAYS ?? 7);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 7;
-}
-
-export function refundRequiresDelivery(): boolean {
-  const flag = process.env.REFUND_REQUIRE_DELIVERY?.trim().toLowerCase();
-  if (flag === "true") return true;
-  if (flag === "false") return false;
-  return process.env.NODE_ENV === "production";
-}
+export { getRefundWindowDays, refundRequiresDelivery };
 
 /**
  * Mock refunds when REFUND_MOCK_MODE=true, or when unset and payment mock is on.
@@ -37,39 +31,14 @@ export function getRefundMockOutcome(receipt?: string): RefundMockOutcome {
   return "success";
 }
 
-const RETURNABLE_STATUSES = new Set([
-  "confirmed",
-  "processing",
-  "shipped",
-  "delivered",
-  "paid",
-]);
-
 export function assertRefundEligible(order: IOrder) {
-  if (["cancelled", "payment_pending", "pending"].includes(order.status)) {
-    throw new ValidationError("This order is not eligible for a return yet");
-  }
-
-  if (order.paymentMethod === "razorpay" && order.paymentStatus !== "paid") {
-    throw new ValidationError("Order payment is not eligible for refund");
-  }
-
-  if (refundRequiresDelivery()) {
-    if (!order.deliveredAt && order.status !== "delivered") {
-      throw new ValidationError(
-        "Returns open after delivery. Track your order and try again once delivered."
-      );
-    }
-    const anchor = order.deliveredAt ?? order.updatedAt;
-    const windowMs = getRefundWindowDays() * 86_400_000;
-    if (Date.now() - new Date(anchor).getTime() > windowMs) {
-      throw new ValidationError(
-        `Return window of ${getRefundWindowDays()} days from delivery has passed`
-      );
-    }
-  } else if (!RETURNABLE_STATUSES.has(order.status)) {
-    throw new ValidationError("This order status does not allow returns");
-  }
+  assertCustomerCanRefund({
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
+    deliveredAt: order.deliveredAt,
+    updatedAt: order.updatedAt,
+  });
 }
 
 export function computeOrderRefundPaymentStatus(

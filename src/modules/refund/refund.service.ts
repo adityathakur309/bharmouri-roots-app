@@ -131,11 +131,8 @@ export class RefundService {
 
     assertRefundEligible(order);
 
-    if (["cancelled", "payment_pending"].includes(order.status)) {
-      throw new ValidationError("This order cannot be refunded");
-    }
-    if (order.paymentMethod === "razorpay" && order.paymentStatus !== "paid") {
-      throw new ValidationError("Order payment is not eligible for refund");
+    if (order.paymentStatus !== "paid") {
+      throw new ValidationError("Refund is available only after payment is completed.");
     }
 
     const item = order.items[data.itemIndex];

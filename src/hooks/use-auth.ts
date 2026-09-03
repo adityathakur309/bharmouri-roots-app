@@ -3,7 +3,7 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/services/api";
-import { getStoredToken, setStoredToken } from "@/services/api/client";
+import { setStoredToken } from "@/services/api/client";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
@@ -33,6 +33,37 @@ export function useAuth() {
     async (email: string, password: string, _callbackUrl = "/") => {
       try {
         const data = await authApi.login({ email, password });
+        if (data.requiresMfa) {
+          return {
+            success: true as const,
+            requiresMfa: true as const,
+            mfaToken: data.mfaToken,
+            maskedEmail: data.maskedEmail,
+            email: data.email,
+          };
+        }
+        setSession(data.user);
+        return {
+          success: true as const,
+          requiresMfa: false as const,
+          user: data.user,
+          redirectTo: resolvePostLoginPath(data.user.role),
+        };
+      } catch (err: unknown) {
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: string }).message)
+            : "Invalid email or password";
+        return { success: false as const, error: message };
+      }
+    },
+    [setSession]
+  );
+
+  const verifyLoginOtp = useCallback(
+    async (mfaToken: string, code: string) => {
+      try {
+        const data = await authApi.verifyLoginOtp({ mfaToken, code });
         setSession(data.user);
         return {
           success: true as const,
@@ -43,7 +74,7 @@ export function useAuth() {
         const message =
           err && typeof err === "object" && "message" in err
             ? String((err as { message: string }).message)
-            : "Invalid email or password";
+            : "Invalid verification code";
         return { success: false as const, error: message };
       }
     },
@@ -78,6 +109,7 @@ export function useAuth() {
       password: string;
       token: string;
       phone?: string;
+      mfaEnabled?: boolean;
     }) => {
       try {
         const data = await authApi.completeRegistration(input);
@@ -109,7 +141,7 @@ export function useAuth() {
   }, [clearSession, router]);
 
   const updateProfile = useCallback(
-    async (data: Partial<Pick<AuthUser, "name" | "phone" | "avatar">>) => {
+    async (data: Partial<Pick<AuthUser, "name" | "phone" | "avatar" | "mfaEnabled">>) => {
       const res = await authApi.updateProfile(data);
       updateProfileStore(res.data);
     },
@@ -121,6 +153,7 @@ export function useAuth() {
     isAuthenticated: hydrated && isAuthenticated,
     isLoading: !hydrated,
     login,
+    verifyLoginOtp,
     signup,
     completeSignup,
     logout,

@@ -1,10 +1,19 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiClient } from "./client";
 import type { Category } from "@/types/category";
 
 export const categoryApi = {
   list: () => apiRequest<Category[]>("get", "/categories"),
 
   adminList: () => apiRequest<Category[]>("get", "/admin/categories"),
+
+  uploadIcon: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file, file.name);
+    return apiClient.post<{ success: true; data: { url: string } }>(
+      "/admin/upload?purpose=category",
+      formData
+    );
+  },
 
   create: (data: Record<string, unknown>) =>
     apiRequest<Category>("post", "/admin/categories", data),

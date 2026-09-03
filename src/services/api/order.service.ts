@@ -42,4 +42,6 @@ export const orderApi = {
 
   createShipment: (id: string) =>
     apiRequest("post", `/orders/${id}/shipment`),
+
+  cancel: (id: string) => apiRequest("post", `/orders/${id}/cancel`),
 };

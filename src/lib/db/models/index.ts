@@ -1,4 +1,5 @@
 export { User, type IUser } from "./user.model";
+export { EmailOtp, type IEmailOtp, type EmailOtpPurpose } from "./email-otp.model";
 export { Product, type IProduct } from "./product.model";
 export { Order, type IOrder } from "./order.model";
 export { Cart, type ICart } from "./cart.model";

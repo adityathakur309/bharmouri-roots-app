@@ -62,29 +62,29 @@ const CATEGORY_THEMES: Record<string, CatalogImageTheme> = {
 
 const HERO_THEMES: Record<string, CatalogImageTheme> = {
   mountains: {
-    from: "#0f766e",
-    to: "#134e4a",
-    accent: "#99f6e4",
+    from: "#1a4d3e",
+    to: "#8b5a2b",
+    accent: "#f0c48a",
     emoji: "🏔️",
     label: "Heart of the Himalayas",
   },
   shawls: {
-    from: "#7c3aed",
-    to: "#4c1d95",
-    accent: "#ddd6fe",
+    from: "#3d2a5c",
+    to: "#7c5a2a",
+    accent: "#e8d5b7",
     emoji: "🧣",
     label: "Himachali Heritage",
   },
   honey: {
-    from: "#d97706",
-    to: "#78350f",
+    from: "#5c3d12",
+    to: "#d97706",
     accent: "#fde68a",
     emoji: "🍯",
     label: "Raw Mountain Honey",
   },
   "story-banner": {
     from: "#14532d",
-    to: "#052e16",
+    to: "#6b4226",
     accent: "#bbf7d0",
     emoji: "⛰️",
     label: "Rooted in the Himalayas",
@@ -170,32 +170,39 @@ export function buildCatalogSvg(
 </svg>`;
 }
 
-/** Wide banner SVG for hero / story sections (16:9). */
-export function buildHeroSvg(
-  theme: CatalogImageTheme,
-  opts?: { subtitle?: string }
-): string {
-  const subtitle = opts?.subtitle ?? "BharmouriRoots · Authentic Himachal";
+/** Wide atmospheric hero / story banners (16:9) — texture only, no baked-in copy. */
+export function buildHeroSvg(theme: CatalogImageTheme): string {
+  const warm = theme.to;
+  const cool = theme.from;
+  const glow = theme.accent;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" preserveAspectRatio="xMidYMid slice">
   <defs>
-    <linearGradient id="hbg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="${theme.from}"/>
-      <stop offset="55%" stop-color="${theme.to}"/>
-      <stop offset="100%" stop-color="#0b1220"/>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${cool}"/>
+      <stop offset="45%" stop-color="${warm}"/>
+      <stop offset="100%" stop-color="#3f2a1c"/>
     </linearGradient>
-    <linearGradient id="haze" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="${theme.accent}" stop-opacity="0.28"/>
-      <stop offset="100%" stop-color="${theme.accent}" stop-opacity="0"/>
-    </linearGradient>
+    <radialGradient id="sun" cx="72%" cy="28%" r="45%">
+      <stop offset="0%" stop-color="#f6c48a" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="${glow}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${glow}" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
   </defs>
-  <rect width="1600" height="900" fill="url(#hbg)"/>
-  <rect width="1600" height="900" fill="url(#haze)"/>
-  <path d="M0 620 L220 480 L380 560 L560 400 L760 540 L980 360 L1200 520 L1400 420 L1600 560 L1600 900 L0 900 Z" fill="rgba(0,0,0,0.22)"/>
-  <path d="M0 700 L180 560 L340 640 L520 500 L720 620 L940 460 L1160 600 L1380 520 L1600 640 L1600 900 L0 900 Z" fill="rgba(0,0,0,0.18)"/>
-  <circle cx="1280" cy="180" r="90" fill="${theme.accent}" opacity="0.35"/>
-  <text x="120" y="340" font-size="96">${theme.emoji}</text>
-  <text x="120" y="430" fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" font-size="54" font-weight="700">${escapeSvgText(theme.label)}</text>
-  <text x="120" y="480" fill="#ffffff" opacity="0.88" font-family="system-ui, sans-serif" font-size="26">${escapeSvgText(subtitle)}</text>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect width="1600" height="900" fill="url(#sun)"/>
+  <g filter="url(#soft)" opacity="0.9">
+    <ellipse cx="220" cy="680" rx="210" ry="140" fill="#6b4a32"/>
+    <ellipse cx="480" cy="720" rx="190" ry="130" fill="#8a5c3a"/>
+    <ellipse cx="760" cy="700" rx="230" ry="150" fill="#5c4030"/>
+    <ellipse cx="1060" cy="740" rx="210" ry="140" fill="#9a6b42"/>
+    <ellipse cx="1340" cy="690" rx="240" ry="160" fill="#7a5234"/>
+    <ellipse cx="980" cy="560" rx="160" ry="110" fill="#c48a4a" opacity="0.55"/>
+    <ellipse cx="360" cy="540" rx="140" ry="100" fill="#a87248" opacity="0.45"/>
+  </g>
+  <rect width="1600" height="900" fill="rgba(8,20,16,0.18)"/>
 </svg>`;
 }

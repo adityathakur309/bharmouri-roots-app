@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FolderTree, Plus, Edit, Trash2, Power } from "lucide-react";
+import { FolderTree, Plus, Edit, Trash2, Power, Upload } from "lucide-react";
 import { categoryApi } from "@/services/api";
 import type { Category } from "@/types/category";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { CategoryIcon, DEFAULT_CATEGORY_ICON, isCategoryIconUrl } from "@/components/shared/category-icon";
 
 function slugify(text: string) {
   return text
@@ -35,7 +36,7 @@ const emptyForm = {
   name: "",
   slug: "",
   description: "",
-  icon: "🏔️",
+  icon: DEFAULT_CATEGORY_ICON,
   image: "",
   sortOrder: "0",
   isActive: true,
@@ -49,6 +50,7 @@ export default function AdminCategoriesPage() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const { viewMode, setViewMode } = useListViewMode();
@@ -80,12 +82,32 @@ export default function AdminCategoriesPage() {
       name: cat.name,
       slug: cat.slug,
       description: cat.description ?? "",
-      icon: cat.icon || "🏔️",
+      icon: cat.icon || DEFAULT_CATEGORY_ICON,
       image: cat.image ?? "",
       sortOrder: String(cat.sortOrder ?? 0),
       isActive: cat.isActive !== false,
     });
     setDialogOpen(true);
+  };
+
+  const handleIconUpload = async (file: File | null) => {
+    if (!file) return;
+    setUploadingIcon(true);
+    try {
+      const res = await categoryApi.uploadIcon(file);
+      const url = res.data?.data?.url;
+      if (!url) throw new Error("Upload failed");
+      setForm((f) => ({ ...f, icon: url }));
+      toast({ title: "Icon uploaded" });
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Could not upload icon";
+      toast({ title: message, variant: "destructive" });
+    } finally {
+      setUploadingIcon(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -200,14 +222,14 @@ export default function AdminCategoriesPage() {
     <div
       className={cn(
         "rounded-xl overflow-hidden bg-[hsl(var(--muted))] shrink-0 flex items-center justify-center",
-        size === "sm" ? "w-10 h-10 text-lg" : "w-14 h-14 text-2xl"
+        size === "sm" ? "w-10 h-10" : "w-14 h-14"
       )}
     >
       {cat.image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
       ) : (
-        <span>{cat.icon || "🏔️"}</span>
+        <CategoryIcon icon={cat.icon} alt={cat.name} size={size === "lg" ? "lg" : "sm"} />
       )}
     </div>
   );
@@ -391,26 +413,76 @@ export default function AdminCategoriesPage() {
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="mb-1.5 block">Icon (emoji)</Label>
-                <Input
-                  value={form.icon}
-                  onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
-                />
+            <div className="space-y-2">
+              <Label className="block">Category icon</Label>
+              <div className="flex items-center gap-3 rounded-xl border p-3 bg-[hsl(var(--muted))]/20">
+                <CategoryIcon icon={form.icon} alt={form.name || "Category"} size="lg" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        disabled={uploadingIcon}
+                        onChange={(e) => void handleIconUpload(e.target.files?.[0] ?? null)}
+                      />
+                      <Button type="button" size="sm" variant="outline" className="gap-1.5" asChild>
+                        <span>
+                          {uploadingIcon ? (
+                            "Uploading..."
+                          ) : (
+                            <>
+                              <Upload className="w-3.5 h-3.5" /> Upload icon
+                            </>
+                          )}
+                        </span>
+                      </Button>
+                    </label>
+                    {isCategoryIconUrl(form.icon) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setForm((f) => ({ ...f, icon: DEFAULT_CATEGORY_ICON }))}
+                      >
+                        Use default
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                    Upload a square icon, or keep an emoji below. Missing icons show {DEFAULT_CATEGORY_ICON} on the storefront.
+                  </p>
+                </div>
               </div>
-              <div>
-                <Label className="mb-1.5 block">Sort order</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="mb-1.5 block text-xs">Emoji fallback</Label>
+                  <Input
+                    value={isCategoryIconUrl(form.icon) ? "" : form.icon}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        icon: e.target.value || DEFAULT_CATEGORY_ICON,
+                      }))
+                    }
+                    placeholder={DEFAULT_CATEGORY_ICON}
+                    disabled={isCategoryIconUrl(form.icon)}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-xs">Sort order</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.sortOrder}
+                    onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                  />
+                </div>
               </div>
             </div>
             <div>
-              <Label className="mb-1.5 block">Image URL</Label>
+              <Label className="mb-1.5 block">Banner image URL (optional)</Label>
               <Input
                 value={form.image}
                 onChange={(e) => setForm((f) => ({ ...f, image: e.target.value }))}

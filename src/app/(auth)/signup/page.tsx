@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Leaf, ArrowLeft, Send, Check } from "lucide-react";
+import { Leaf, ArrowLeft, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,13 +13,16 @@ import { AuthTermsConsent } from "@/components/auth/auth-terms-consent";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SignupPage() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [maskedEmail, setMaskedEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     authApi.getProviders().then((res) => setGoogleEnabled(Boolean(res.data?.google))).catch(() => {});
@@ -36,7 +40,7 @@ export default function SignupPage() {
     window.location.href = "/api/auth/google?callbackUrl=%2F";
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptedTerms) {
       toast({
@@ -49,14 +53,39 @@ export default function SignupPage() {
     setIsLoading(true);
     setError("");
     try {
-      await authApi.startRegistration(email.trim());
-      setSent(true);
+      const res = await authApi.startRegistration(email.trim());
+      setMaskedEmail(res.data.maskedEmail || email.trim());
+      setStep("otp");
+      toast({ title: "Code sent", description: "Check your email for a 6-digit code." });
     } catch (err) {
       const message =
         err && typeof err === "object" && "message" in err
           ? String((err as { message: string }).message)
           : "Enter a valid email";
       setError(message || "Enter a valid email");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+    try {
+      const res = await authApi.verifyRegistrationOtp({
+        email: email.trim().toLowerCase(),
+        code: otpCode.trim(),
+      });
+      router.push(
+        `/complete-registration?email=${encodeURIComponent(res.data.email)}&token=${encodeURIComponent(res.data.token)}`
+      );
+    } catch (err) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Invalid verification code";
+      setError(message || "Invalid verification code");
     } finally {
       setIsLoading(false);
     }
@@ -72,7 +101,7 @@ export default function SignupPage() {
           </div>
           <h1 className="text-3xl font-bold mb-3">Join the BharmouriRoots Family</h1>
           <p className="text-white/70 text-lg leading-relaxed">
-            Verify your email to start — then complete your account and shop authentic Himachali products.
+            Verify your email with a one-time code — then complete your account and shop authentic Himachali products.
           </p>
         </div>
       </div>
@@ -97,13 +126,13 @@ export default function SignupPage() {
           </div>
 
           <AnimatePresence mode="wait">
-            {!sent ? (
+            {step === "email" ? (
               <motion.form
-                key="form"
+                key="email"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onSubmit={handleSubmit}
+                onSubmit={handleSendOtp}
                 className="space-y-4"
               >
                 <div>
@@ -136,52 +165,75 @@ export default function SignupPage() {
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                         className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
                       />
-                      Sending...
+                      Sending code...
                     </>
                   ) : (
                     <>
                       <Send className="w-5 h-5" />
-                      Verify &amp; Continue
+                      Send verification code
                     </>
                   )}
                 </Button>
               </motion.form>
             ) : (
-              <motion.div
-                key="success"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-2"
+              <motion.form
+                key="otp"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                onSubmit={handleVerifyOtp}
+                className="space-y-4"
               >
-                <div className="w-16 h-16 rounded-full gradient-forest flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-8 h-8 text-white" />
+                <div className="rounded-xl border bg-[hsl(var(--muted))]/20 p-4 text-center">
+                  <div className="w-12 h-12 rounded-full bg-[hsl(var(--primary))]/10 flex items-center justify-center mx-auto mb-3">
+                    <ShieldCheck className="w-6 h-6 text-[hsl(var(--primary))]" />
+                  </div>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Enter the 6-digit code sent to
+                  </p>
+                  <p className="font-semibold text-[hsl(var(--primary))] mt-1 break-all">
+                    {maskedEmail || email}
+                  </p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-[hsl(var(--primary))]/10 flex items-center justify-center mx-auto mb-3">
-                  <Mail className="w-6 h-6 text-[hsl(var(--primary))]" />
+                <div>
+                  <Label className="mb-1.5 block">Verification code</Label>
+                  <Input
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    required
+                    className="h-12 text-center text-xl tracking-[0.4em] font-semibold"
+                    autoComplete="one-time-code"
+                  />
                 </div>
-                <h3 className="text-xl font-bold mb-2">Check your email inbox</h3>
-                <p className="text-sm text-[hsl(var(--muted-foreground))] mb-2">
-                  We sent a registration link to
-                </p>
-                <p className="font-semibold text-[hsl(var(--primary))] mb-4 break-all">{email}</p>
-                <p className="text-sm text-[hsl(var(--muted-foreground))] mb-6">
-                  Open the email and tap <strong>Complete Registration</strong> to finish creating your account.
-                </p>
+                {error && (
+                  <p className="text-sm text-red-600" role="alert">
+                    {error}
+                  </p>
+                )}
+                <Button type="submit" size="lg" className="w-full gap-2" disabled={isLoading || otpCode.length !== 6}>
+                  {isLoading ? "Verifying..." : "Verify & continue"}
+                </Button>
                 <button
                   type="button"
+                  className="w-full text-sm text-[hsl(var(--primary))] hover:underline"
+                  disabled={isLoading}
                   onClick={() => {
-                    setSent(false);
+                    setStep("email");
+                    setOtpCode("");
                     setError("");
                   }}
-                  className="text-sm text-[hsl(var(--primary))] hover:underline"
                 >
                   Use a different email
                 </button>
-              </motion.div>
+              </motion.form>
             )}
           </AnimatePresence>
 
-          {!sent && (
+          {step === "email" && (
             <>
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">

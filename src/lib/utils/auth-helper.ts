@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import {
   JWT_ALGORITHM,
   JWT_EXPIRES_IN,
+  MFA_CHALLENGE_EXPIRES_IN,
+  MFA_CHALLENGE_PURPOSE,
   REGISTRATION_TOKEN_EXPIRES_IN,
   REGISTRATION_TOKEN_PURPOSE,
 } from "@/lib/constants/jwt";
@@ -116,6 +118,53 @@ export function verifyRegistrationToken(
   }
 }
 
+/** Short-lived token proving password was verified; used for MFA OTP step. */
+export function signMfaChallengeToken(userId: string, email: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not defined");
+
+  return jwt.sign(
+    {
+      purpose: MFA_CHALLENGE_PURPOSE,
+      sub: userId,
+      email: email.toLowerCase().trim(),
+    },
+    secret,
+    {
+      expiresIn: MFA_CHALLENGE_EXPIRES_IN,
+      algorithm: JWT_ALGORITHM,
+    }
+  );
+}
+
+export function verifyMfaChallengeToken(
+  token: string
+): { userId: string; email: string } | null {
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+
+    const payload = jwt.verify(token, secret, {
+      algorithms: [JWT_ALGORITHM],
+    }) as {
+      purpose?: string;
+      sub?: string;
+      email?: string;
+    };
+
+    if (payload.purpose !== MFA_CHALLENGE_PURPOSE || !payload.sub || !payload.email) {
+      return null;
+    }
+
+    return {
+      userId: payload.sub,
+      email: payload.email.toLowerCase().trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function toPublicUser(user: {
   _id: { toString(): string };
   name: string;
@@ -123,6 +172,7 @@ export function toPublicUser(user: {
   role: "user" | "admin";
   avatar?: string;
   phone?: string;
+  mfaEnabled?: boolean;
 }) {
   return {
     id: user._id.toString(),
@@ -131,5 +181,6 @@ export function toPublicUser(user: {
     role: user.role,
     avatar: user.avatar,
     phone: user.phone,
+    mfaEnabled: Boolean(user.mfaEnabled),
   };
 }

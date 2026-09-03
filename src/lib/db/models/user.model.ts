@@ -10,6 +10,8 @@ export interface IUser extends Document {
   phone?: string;
   googleId?: string;
   emailVerified?: Date;
+  /** Optional email OTP on login after password match */
+  mfaEnabled: boolean;
   isActive: boolean;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
@@ -27,6 +29,7 @@ const userSchema = new Schema<IUser>(
     phone: String,
     googleId: { type: String, sparse: true },
     emailVerified: Date,
+    mfaEnabled: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     resetPasswordToken: { type: String, select: false },
     resetPasswordExpires: { type: Date, select: false },
