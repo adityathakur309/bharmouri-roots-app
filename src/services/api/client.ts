@@ -57,10 +57,24 @@ const baseURL =
   process.env.NEXT_PUBLIC_API_URL ??
   (typeof window !== "undefined" ? "/api" : "http://localhost:3000/api");
 
+function isFormDataBody(data: unknown): data is FormData {
+  return typeof FormData !== "undefined" && data instanceof FormData;
+}
+
+function stripContentType(headers: InternalAxiosRequestConfig["headers"]) {
+  if (!headers) return;
+  if (typeof headers.delete === "function") {
+    headers.delete("Content-Type");
+    headers.delete("content-type");
+    return;
+  }
+  delete (headers as Record<string, unknown>)["Content-Type"];
+  delete (headers as Record<string, unknown>)["content-type"];
+}
+
 export const apiClient: AxiosInstance = axios.create({
   baseURL,
   timeout: 30000,
-  headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
 
@@ -70,14 +84,16 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // FormData must not use application/json — browser must set multipart boundary
-  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
-    if (typeof config.headers.set === "function") {
-      config.headers.set("Content-Type", false as unknown as string);
-    } else {
-      delete (config.headers as Record<string, unknown>)["Content-Type"];
-      delete (config.headers as Record<string, unknown>)["content-type"];
-    }
+  if (isFormDataBody(config.data)) {
+    // Let the runtime set multipart/form-data with the correct boundary.
+    stripContentType(config.headers);
+    config.timeout = Math.max(config.timeout ?? 0, 60_000);
+  } else if (
+    config.data !== undefined &&
+    typeof config.headers.get === "function" &&
+    !config.headers.get("Content-Type")
+  ) {
+    config.headers.set("Content-Type", "application/json");
   }
 
   return config;

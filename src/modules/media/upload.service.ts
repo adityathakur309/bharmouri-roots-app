@@ -84,14 +84,22 @@ function detectImageType(buffer: Buffer): DetectedImage | null {
   return null;
 }
 
-async function readToBuffer(input: File | Buffer | ArrayBuffer): Promise<Buffer> {
+async function readToBuffer(
+  input: File | Blob | Buffer | ArrayBuffer
+): Promise<Buffer> {
   if (Buffer.isBuffer(input)) return input;
   if (input instanceof ArrayBuffer) return Buffer.from(input);
   return Buffer.from(await input.arrayBuffer());
 }
 
-function claimedMime(file: File | undefined, detected: DetectedImage): void {
-  if (!file?.type) return;
+function hasClaimedMime(
+  input: File | Buffer | ArrayBuffer | Blob
+): input is File | Blob {
+  return typeof Blob !== "undefined" && input instanceof Blob;
+}
+
+function claimedMime(file: File | Blob, detected: DetectedImage): void {
+  if (!file.type) return;
   const normalized = file.type === "image/jpg" ? "image/jpeg" : file.type;
   if (!ALLOWED_MIME.has(normalized)) {
     throw new ValidationError("Only JPEG, PNG, WebP, and GIF images are allowed");
@@ -168,7 +176,7 @@ function prefersMongoStorage(): boolean {
  * Returns `/uploads/...` on disk, or `/api/media/:id` on serverless.
  */
 export async function uploadImage(
-  input: File | Buffer | ArrayBuffer,
+  input: File | Blob | Buffer | ArrayBuffer,
   options: UploadOptions = {}
 ): Promise<UploadResult> {
   const purpose: UploadPurpose = options.purpose ?? "general";
@@ -193,7 +201,7 @@ export async function uploadImage(
     throw new ValidationError("Only JPEG, PNG, WebP, and GIF images are allowed");
   }
 
-  if (input instanceof File) {
+  if (hasClaimedMime(input)) {
     claimedMime(input, detected);
   }
 
@@ -283,13 +291,23 @@ export async function uploadImage(
   };
 }
 
-/** Extract a File from multipart form data (field name defaults to `file`). */
+function isUploadedFile(value: FormDataEntryValue | null): value is File {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof value !== "string" &&
+    typeof (value as Blob).arrayBuffer === "function" &&
+    typeof (value as Blob).size === "number"
+  );
+}
+
+/** Extract a file from multipart form data (field name defaults to `file`). */
 export async function extractUploadFile(
   formData: FormData,
   fieldName = "file"
-): Promise<File> {
+): Promise<File | Blob> {
   const file = formData.get(fieldName);
-  if (!file || !(file instanceof File)) {
+  if (!isUploadedFile(file) || file.size === 0) {
     throw new ValidationError("No file uploaded");
   }
   return file;
