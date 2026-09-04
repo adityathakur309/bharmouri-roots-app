@@ -1,10 +1,28 @@
 import { randomUUID } from "crypto";
-import sharp from "sharp";
 import { ValidationError } from "@/lib/utils/errors";
 import { logger } from "@/lib/utils/logger";
 import type { MediaPurpose } from "@/lib/db/models/media.model";
 import { writeUploadFile } from "@/lib/storage/local-media";
 import { mediaRepository } from "./media.repository";
+
+type SharpInstance = typeof import("sharp").default;
+
+let sharpPromise: Promise<SharpInstance | null> | null = null;
+
+/** Load sharp on demand so a missing native binary cannot crash the upload route. */
+function loadSharp(): Promise<SharpInstance | null> {
+  if (!sharpPromise) {
+    sharpPromise = import("sharp")
+      .then((mod) => mod.default)
+      .catch((error) => {
+        logger.error("sharp failed to load — uploads will store the original file", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      });
+  }
+  return sharpPromise;
+}
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_WIDTH = 1920;
@@ -110,9 +128,15 @@ function claimedMime(file: File | Blob, detected: DetectedImage): void {
   }
 }
 
-function createSharpPipeline(buffer: Buffer) {
-  // failOn none + regenerate help with screenshots / odd colour profiles
-  return sharp(buffer, { failOn: "none", sequentialRead: true }).rotate();
+function originalImage(
+  buffer: Buffer,
+  detected: DetectedImage
+): { buffer: Buffer; mimeType: string; extension: string } {
+  return {
+    buffer,
+    mimeType: detected.mimeType,
+    extension: detected.extension,
+  };
 }
 
 async function optimizeImage(
@@ -124,20 +148,24 @@ async function optimizeImage(
 ): Promise<{ buffer: Buffer; mimeType: string; extension: string }> {
   // Preserve animated GIFs — sharp would flatten frames
   if (detected.mimeType === "image/gif") {
-    return {
-      buffer,
-      mimeType: detected.mimeType,
-      extension: detected.extension,
-    };
+    return originalImage(buffer, detected);
   }
+
+  const sharp = await loadSharp();
+  if (!sharp) {
+    return originalImage(buffer, detected);
+  }
+
+  const createPipeline = () =>
+    sharp(buffer, { failOn: "none", sequentialRead: true }).rotate();
 
   // Read metadata from a separate instance — reusing a pipeline after
   // metadata() can fail on some PNGs ("colourspace: parameter space not set").
-  const meta = await createSharpPipeline(buffer).metadata();
+  const meta = await createPipeline().metadata();
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;
 
-  let pipeline = createSharpPipeline(buffer);
+  let pipeline = createPipeline();
 
   if (width > options.maxWidth || height > options.maxHeight) {
     pipeline = pipeline.resize({
@@ -167,6 +195,97 @@ function prefersMongoStorage(): boolean {
   if (process.env.UPLOAD_STORAGE === "mongodb") return true;
   if (process.env.UPLOAD_STORAGE === "disk") return false;
   return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+}
+
+function errorDetail(error: unknown) {
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    name: error instanceof Error ? error.name : undefined,
+  };
+}
+
+async function createMongoBinary(
+  purpose: UploadPurpose,
+  filename: string,
+  optimized: { buffer: Buffer; mimeType: string }
+): Promise<{ id: string; url: string }> {
+  const payload = Buffer.from(optimized.buffer);
+  const media = await mediaRepository.create({
+    filename,
+    mimeType: optimized.mimeType,
+    size: payload.length,
+    purpose,
+    data: payload,
+  });
+  const id = String(media._id);
+  const url = `/api/media/${id}`;
+  try {
+    await mediaRepository.updateUrl(id, url);
+  } catch (error) {
+    logger.warn("Media URL update failed; serving /api/media/:id anyway", {
+      id,
+      ...errorDetail(error),
+    });
+  }
+  logger.info("Image uploaded to MongoDB (serverless-safe)", {
+    id,
+    purpose,
+    mimeType: optimized.mimeType,
+    size: payload.length,
+  });
+  return { id, url };
+}
+
+async function createDiskRecord(
+  purpose: UploadPurpose,
+  filename: string,
+  optimized: { buffer: Buffer; mimeType: string }
+): Promise<{ id: string; url: string }> {
+  const disk = await writeUploadFile(purpose, filename, optimized.buffer);
+  const media = await mediaRepository.create({
+    filename,
+    mimeType: optimized.mimeType,
+    size: optimized.buffer.length,
+    purpose,
+    path: disk.relativePath,
+    url: disk.publicUrl,
+  });
+  const id = String(media._id);
+  logger.info("Image uploaded to disk", {
+    id,
+    purpose,
+    path: disk.relativePath,
+    mimeType: optimized.mimeType,
+    size: optimized.buffer.length,
+  });
+  return { id, url: disk.publicUrl };
+}
+
+async function persistUpload(
+  purpose: UploadPurpose,
+  filename: string,
+  optimized: { buffer: Buffer; mimeType: string }
+): Promise<{ id: string; url: string }> {
+  const preferMongo = prefersMongoStorage();
+  const attempts = preferMongo
+    ? [createMongoBinary, createDiskRecord]
+    : [createDiskRecord, createMongoBinary];
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
+    try {
+      return await attempt(purpose, filename, optimized);
+    } catch (error) {
+      lastError = error;
+      logger.warn("Upload storage attempt failed", {
+        attempt: attempt.name,
+        ...errorDetail(error),
+      });
+    }
+  }
+
+  logger.error("Could not persist uploaded image", errorDetail(lastError));
+  throw new ValidationError("Could not store uploaded image");
 }
 
 /**
@@ -214,10 +333,10 @@ export async function uploadImage(
       convertToWebp,
     });
   } catch (error) {
-    logger.error("Image optimization failed", {
+    logger.warn("Image optimization failed — storing original file", {
       message: error instanceof Error ? error.message : String(error),
     });
-    throw new ValidationError("Invalid or corrupt image file");
+    optimized = originalImage(raw, detected);
   }
 
   if (optimized.buffer.length > maxBytes) {
@@ -225,65 +344,11 @@ export async function uploadImage(
   }
 
   const filename = `${randomUUID()}.${optimized.extension}`;
-  const useMongo = prefersMongoStorage();
-
-  let relativePath: string | undefined;
-  let publicUrl: string | undefined;
-
-  if (!useMongo) {
-    try {
-      const stored = await writeUploadFile(purpose, filename, optimized.buffer);
-      relativePath = stored.relativePath;
-      publicUrl = stored.publicUrl;
-    } catch (error) {
-      // Local/VPS should succeed; if disk is unavailable (e.g. misconfigured host),
-      // fall back to MongoDB so admin product creation still works.
-      logger.warn("Disk write failed — falling back to MongoDB binary storage", {
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  const storeInMongo = !relativePath;
-
-  const media = await mediaRepository.create({
-    filename,
-    mimeType: optimized.mimeType,
-    size: optimized.buffer.length,
-    purpose,
-    ...(storeInMongo
-      ? { data: optimized.buffer }
-      : { path: relativePath, url: publicUrl }),
-  });
-
-  const id = media._id.toString();
-
-  if (storeInMongo) {
-    publicUrl = `/api/media/${id}`;
-    await mediaRepository.updateUrl(id, publicUrl);
-    logger.info("Image uploaded to MongoDB (serverless-safe)", {
-      id,
-      purpose,
-      mimeType: optimized.mimeType,
-      size: optimized.buffer.length,
-    });
-  } else {
-    logger.info("Image uploaded to disk", {
-      id,
-      purpose,
-      path: relativePath,
-      mimeType: optimized.mimeType,
-      size: optimized.buffer.length,
-    });
-  }
-
-  if (!publicUrl) {
-    throw new ValidationError("Could not store uploaded image");
-  }
+  const stored = await persistUpload(purpose, filename, optimized);
 
   return {
-    id,
-    url: publicUrl,
+    id: stored.id,
+    url: stored.url,
     filename,
     mimeType: optimized.mimeType,
     size: optimized.buffer.length,

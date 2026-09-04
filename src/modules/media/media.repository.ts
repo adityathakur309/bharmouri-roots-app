@@ -15,7 +15,7 @@ export class MediaRepository {
   }
 
   updateUrl(id: string, url: string) {
-    return Media.findByIdAndUpdate(id, { url }, { new: true });
+    return Media.findByIdAndUpdate(id, { url }, { returnDocument: "after" });
   }
 
   findById(id: string) {

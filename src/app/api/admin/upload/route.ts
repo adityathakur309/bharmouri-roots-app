@@ -1,7 +1,8 @@
 import { withHandler, type AuthenticatedRequest } from "@/lib/middleware/with-handler";
 import { RATE_LIMITS } from "@/lib/middleware/rate-limit";
 import { successResponse } from "@/lib/utils/api-response";
-import { ValidationError } from "@/lib/utils/errors";
+import { isAppError, ValidationError } from "@/lib/utils/errors";
+import { logger } from "@/lib/utils/logger";
 import { uploadPurposeSchema } from "@/lib/validators/upload.validator";
 import {
   extractUploadFile,
@@ -34,18 +35,27 @@ export const POST = withHandler(
       );
     }
     const file = await extractUploadFile(formData);
-    const result = await uploadImage(file, { purpose });
-
-    return successResponse(
-      {
-        url: result.url,
-        filename: result.filename,
-        id: result.id,
-        mimeType: result.mimeType,
-        size: result.size,
-      },
-      { message: "Image uploaded", status: 201 }
-    );
+    try {
+      const result = await uploadImage(file, { purpose });
+      return successResponse(
+        {
+          url: result.url,
+          filename: result.filename,
+          id: result.id,
+          mimeType: result.mimeType,
+          size: result.size,
+        },
+        { message: "Image uploaded", status: 201 }
+      );
+    } catch (error) {
+      if (isAppError(error)) throw error;
+      logger.error("Upload handler failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new ValidationError(
+        "Could not upload image. Please try a JPEG, PNG, or WebP under 5MB."
+      );
+    }
   },
   { admin: true, rateLimit: RATE_LIMITS.upload }
 );
